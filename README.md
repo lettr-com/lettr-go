@@ -1,6 +1,6 @@
 # lettr-go
 
-The official Go SDK for the [Lettr](https://lettr.com) Email API. Send transactional emails with tracking, attachments, and template support.
+The official Go SDK for the [Lettr](https://lettr.com) Email API for Artisans. Send transactional emails with tracking, attachments, and template support.
 
 ## Installation
 
