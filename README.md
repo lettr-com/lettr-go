@@ -5,7 +5,7 @@ The official Go SDK for the [Lettr](https://lettr.com) Email API for Artisans. S
 ## Installation
 
 ```bash
-go get github.com/lettr/lettr-go
+go get github.com/lettr-com/lettr-go
 ```
 
 Requires Go 1.21 or later.
@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"log"
 
-	lettr "github.com/lettr/lettr-go"
+	lettr "github.com/lettr-com/lettr-go"
 )
 
 func main() {

@@ -1,3 +1,3 @@
-module github.com/lettr/lettr-go
+module github.com/lettr-com/lettr-go
 
 go 1.21
