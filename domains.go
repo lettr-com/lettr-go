@@ -36,9 +36,9 @@ type DomainDetail struct {
 	DkimStatus      *string    `json:"dkim_status"`
 	SpfStatus       *string    `json:"spf_status"`
 	DmarcStatus     *string    `json:"dmarc_status"`
-	TrackingDomain  *string    `json:"tracking_domain"`
-	DnsProvider     *string    `json:"dns_provider"`
-	IsPrimaryDomain bool       `json:"is_primary_domain"`
+	TrackingDomain  *string          `json:"tracking_domain"`
+	DnsProvider     *DnsProviderInfo `json:"dns_provider"`
+	IsPrimaryDomain bool             `json:"is_primary_domain"`
 	DNS             *DomainDNS `json:"dns"`
 	CreatedAt       string     `json:"created_at"`
 	UpdatedAt       string     `json:"updated_at"`
@@ -46,20 +46,23 @@ type DomainDetail struct {
 
 // DomainDNS contains the DNS records for a domain.
 type DomainDNS struct {
-	DKIM  *DomainDKIM  `json:"dkim"`
-	CNAME *DomainCNAME `json:"cname,omitempty"`
+	DKIM *DomainDKIM `json:"dkim"`
 }
 
 // DomainDKIM contains the DKIM DNS record details.
 type DomainDKIM struct {
-	Selector string `json:"selector"`
-	Public   string `json:"public"`
+	Selector      string `json:"selector"`
+	Public        string `json:"public"`
+	Headers       string `json:"headers,omitempty"`
+	SigningDomain string `json:"signing_domain,omitempty"`
 }
 
-// DomainCNAME contains the CNAME DNS record details.
-type DomainCNAME struct {
-	Host  string `json:"host"`
-	Value string `json:"value"`
+// DnsProviderInfo contains detected DNS provider information for a domain.
+type DnsProviderInfo struct {
+	Provider      string   `json:"provider"`
+	ProviderLabel string   `json:"provider_label"`
+	Nameservers   []string `json:"nameservers"`
+	Error         *string  `json:"error"`
 }
 
 // CreateDomainRequest represents the request body for creating a domain.
@@ -190,7 +193,7 @@ type DomainVerificationView struct {
 	DmarcStatus       string                    `json:"dmarc_status"`
 	SpfStatus         string                    `json:"spf_status"`
 	IsPrimaryDomain   bool                      `json:"is_primary_domain"`
-	OwnershipVerified bool                      `json:"ownership_verified"`
+	OwnershipVerified *string                   `json:"ownership_verified"`
 	Dmarc             *DmarcValidationResult    `json:"dmarc,omitempty"`
 	Spf               *SpfValidationResult      `json:"spf,omitempty"`
 	DNS               *DomainDnsVerificationView `json:"dns,omitempty"`
@@ -198,23 +201,23 @@ type DomainVerificationView struct {
 
 // DmarcValidationResult contains DMARC validation details.
 type DmarcValidationResult struct {
-	IsValid             bool   `json:"is_valid"`
-	Status              string `json:"status"`
-	FoundAtDomain       string `json:"found_at_domain,omitempty"`
-	Record              string `json:"record,omitempty"`
-	Policy              string `json:"policy,omitempty"`
-	SubdomainPolicy     string `json:"subdomain_policy,omitempty"`
-	Error               string `json:"error,omitempty"`
-	CoveredByParentPolicy bool `json:"covered_by_parent_policy"`
+	IsValid               bool    `json:"is_valid"`
+	Status                string  `json:"status"`
+	FoundAtDomain         *string `json:"found_at_domain"`
+	Record                *string `json:"record"`
+	Policy                *string `json:"policy"`
+	SubdomainPolicy       *string `json:"subdomain_policy"`
+	Error                 *string `json:"error"`
+	CoveredByParentPolicy bool    `json:"covered_by_parent_policy"`
 }
 
 // SpfValidationResult contains SPF validation details.
 type SpfValidationResult struct {
-	IsValid           bool   `json:"is_valid"`
-	Status            string `json:"status"`
-	Record            string `json:"record,omitempty"`
-	Error             string `json:"error,omitempty"`
-	IncludesSparkpost bool   `json:"includes_sparkpost"`
+	IsValid           bool    `json:"is_valid"`
+	Status            string  `json:"status"`
+	Record            *string `json:"record"`
+	Error             *string `json:"error"`
+	IncludesSparkpost bool    `json:"includes_sparkpost"`
 }
 
 // DomainDnsVerificationView contains DNS verification error details.

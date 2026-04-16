@@ -8,6 +8,8 @@ import (
 	"testing"
 )
 
+func strPtr(s string) *string { return &s }
+
 // newTestClient creates a Client pointing to a test server.
 func newTestClient(t *testing.T, handler http.HandlerFunc) (*Client, *httptest.Server) {
 	t.Helper()
@@ -162,7 +164,7 @@ func TestListEmails(t *testing.T) {
 			Message: "Emails retrieved successfully.",
 			Data: ListEmailsData{
 				Events: ListEmailsEvents{
-					Data:       []EmailEvent{{EventID: "evt-1", Subject: "Test"}},
+					Data:       []EmailEvent{{EventID: "evt-1", Subject: strPtr("Test")}},
 					TotalCount: 1,
 					Pagination: CursorPagination{PerPage: 10},
 				},
@@ -556,7 +558,7 @@ func TestScheduleEmail(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(ScheduleEmailResponse{
 			Message: "Email scheduled.",
-			Data:    ScheduleEmailData{TransmissionID: "tx-123"},
+			Data:    ScheduleEmailData{RequestID: "tx-123", Accepted: 1, Rejected: 0},
 		})
 	})
 	defer server.Close()
@@ -573,8 +575,11 @@ func TestScheduleEmail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Data.TransmissionID != "tx-123" {
-		t.Errorf("expected transmission ID %q, got %q", "tx-123", resp.Data.TransmissionID)
+	if resp.Data.RequestID != "tx-123" {
+		t.Errorf("expected request ID %q, got %q", "tx-123", resp.Data.RequestID)
+	}
+	if resp.Data.Accepted != 1 {
+		t.Errorf("expected 1 accepted, got %d", resp.Data.Accepted)
 	}
 }
 
@@ -630,9 +635,12 @@ func TestCancelScheduledEmail(t *testing.T) {
 	})
 	defer server.Close()
 
-	err := client.Emails.CancelScheduled(context.Background(), "tx-123")
+	resp, err := client.Emails.CancelScheduled(context.Background(), "tx-123")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Message != "Scheduled email cancelled." {
+		t.Errorf("expected message %q, got %q", "Scheduled email cancelled.", resp.Message)
 	}
 }
 
@@ -757,9 +765,12 @@ func TestDeleteWebhook(t *testing.T) {
 	})
 	defer server.Close()
 
-	err := client.Webhooks.Delete(context.Background(), "wh-123")
+	resp, err := client.Webhooks.Delete(context.Background(), "wh-123")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Message != "Webhook deleted." {
+		t.Errorf("expected message %q, got %q", "Webhook deleted.", resp.Message)
 	}
 }
 
@@ -773,13 +784,14 @@ func TestGetTemplate(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
+		activeVersion := 2
 		json.NewEncoder(w).Encode(GetTemplateResponse{
 			Message: "Template retrieved.",
 			Data: TemplateDetail{
 				ID:            1,
 				Name:          "Welcome",
 				Slug:          "welcome",
-				ActiveVersion: 2,
+				ActiveVersion: &activeVersion,
 				VersionsCount: 2,
 			},
 		})
@@ -790,8 +802,8 @@ func TestGetTemplate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Data.ActiveVersion != 2 {
-		t.Errorf("expected active version 2, got %d", resp.Data.ActiveVersion)
+	if resp.Data.ActiveVersion == nil || *resp.Data.ActiveVersion != 2 {
+		t.Errorf("expected active version 2, got %v", resp.Data.ActiveVersion)
 	}
 }
 
@@ -848,9 +860,12 @@ func TestDeleteTemplate(t *testing.T) {
 	})
 	defer server.Close()
 
-	err := client.Templates.Delete(context.Background(), "welcome", nil)
+	resp, err := client.Templates.Delete(context.Background(), "welcome", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Message != "Template deleted." {
+		t.Errorf("expected message %q, got %q", "Template deleted.", resp.Message)
 	}
 }
 

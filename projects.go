@@ -20,7 +20,7 @@ type Project struct {
 	TeamID    int    `json:"team_id"`
 	CreatedAt string `json:"created_at"`
 	UpdatedAt string `json:"updated_at"`
-	Emoji     string `json:"emoji,omitempty"`
+	Emoji     *string `json:"emoji"`
 }
 
 // ListProjectsParams contains the query parameters for listing projects.

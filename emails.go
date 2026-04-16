@@ -63,10 +63,10 @@ type SendEmailRequest struct {
 	Attachments []Attachment `json:"attachments,omitempty"`
 
 	// SubstitutionData contains key-value pairs for template variable replacement.
-	SubstitutionData map[string]interface{} `json:"substitution_data,omitempty"`
+	SubstitutionData map[string]string `json:"substitution_data,omitempty"`
 
 	// Metadata contains custom key-value pairs stored with the email.
-	Metadata map[string]interface{} `json:"metadata,omitempty"`
+	Metadata map[string]string `json:"metadata,omitempty"`
 
 	// Tag is a tag for tracking and analytics (optional).
 	Tag string `json:"tag,omitempty"`
@@ -88,6 +88,12 @@ type SendEmailOptions struct {
 
 	// Transactional marks the email as transactional.
 	Transactional *bool `json:"transactional,omitempty"`
+
+	// InlineCss enables inlining CSS styles in HTML content.
+	InlineCss *bool `json:"inline_css,omitempty"`
+
+	// PerformSubstitutions enables variable substitutions in content.
+	PerformSubstitutions *bool `json:"perform_substitutions,omitempty"`
 }
 
 // Attachment represents a file attachment on an email.
@@ -126,22 +132,22 @@ type EmailEvent struct {
 	EventID               string                 `json:"event_id"`
 	Type                  string                 `json:"type,omitempty"`
 	Timestamp             string                 `json:"timestamp"`
-	RequestID             string                 `json:"request_id"`
-	MessageID             string                 `json:"message_id"`
-	Subject               string                 `json:"subject"`
-	FriendlyFrom          string                 `json:"friendly_from"`
-	SendingDomain         string                 `json:"sending_domain"`
-	RcptTo                string                 `json:"rcpt_to"`
-	RawRcptTo             string                 `json:"raw_rcpt_to"`
-	RecipientDomain       string                 `json:"recipient_domain"`
-	MailboxProvider       string                 `json:"mailbox_provider"`
-	MailboxProviderRegion string                 `json:"mailbox_provider_region"`
-	SendingIP             string                 `json:"sending_ip"`
-	ClickTracking         bool                   `json:"click_tracking"`
-	OpenTracking          bool                   `json:"open_tracking"`
-	Transactional         bool                   `json:"transactional"`
-	MsgSize               int                    `json:"msg_size"`
-	InjectionTime         string                 `json:"injection_time"`
+	RequestID             *string                `json:"request_id"`
+	MessageID             *string                `json:"message_id"`
+	Subject               *string                `json:"subject"`
+	FriendlyFrom          *string                `json:"friendly_from"`
+	SendingDomain         *string                `json:"sending_domain"`
+	RcptTo                *string                `json:"rcpt_to"`
+	RawRcptTo             *string                `json:"raw_rcpt_to"`
+	RecipientDomain       *string                `json:"recipient_domain"`
+	MailboxProvider       *string                `json:"mailbox_provider"`
+	MailboxProviderRegion *string                `json:"mailbox_provider_region"`
+	SendingIP             *string                `json:"sending_ip"`
+	ClickTracking         *bool                  `json:"click_tracking"`
+	OpenTracking          *bool                  `json:"open_tracking"`
+	Transactional         *bool                  `json:"transactional"`
+	MsgSize               *int                   `json:"msg_size"`
+	InjectionTime         *string                `json:"injection_time"`
 	Reason                *string                `json:"reason"`
 	RawReason             *string                `json:"raw_reason"`
 	ErrorCode             *string                `json:"error_code"`
@@ -163,7 +169,12 @@ type EmailEvent struct {
 	RcptType              *string                `json:"rcpt_type,omitempty"`
 	RcptTags              []string               `json:"rcpt_tags,omitempty"`
 	IpPool                *string                `json:"ip_pool,omitempty"`
-	DnsProvider           *string                `json:"dns_provider,omitempty"`
+	MsgFrom               *string                `json:"msg_from,omitempty"`
+	QueueTime             *int                   `json:"queue_time,omitempty"`
+	OutboundTls           *string                `json:"outbound_tls,omitempty"`
+	InitialPixel          *bool                  `json:"initial_pixel,omitempty"`
+	NumRetries            *int                   `json:"num_retries,omitempty"`
+	DeviceToken           *string                `json:"device_token,omitempty"`
 	TargetLinkURL         *string                `json:"target_link_url,omitempty"`
 	TargetLinkName        *string                `json:"target_link_name,omitempty"`
 	UserAgent             *string                `json:"user_agent,omitempty"`
@@ -365,10 +376,10 @@ type ListEmailEventsParams struct {
 	Events []string
 
 	// Recipients filters by recipient email addresses.
-	Recipients string
+	Recipients []string
 
-	// Transmissions filters by transmission IDs.
-	Transmissions []string
+	// Transmissions filters by transmission ID.
+	Transmissions string
 
 	// BounceClasses filters by bounce classification codes.
 	BounceClasses []int
@@ -425,11 +436,11 @@ func (s *EmailService) ListEvents(ctx context.Context, params *ListEmailEventsPa
 		if len(params.Events) > 0 {
 			q.Set("events", strings.Join(params.Events, ","))
 		}
-		if params.Recipients != "" {
-			q.Set("recipients", params.Recipients)
+		if len(params.Recipients) > 0 {
+			q.Set("recipients", strings.Join(params.Recipients, ","))
 		}
-		if len(params.Transmissions) > 0 {
-			q.Set("transmissions", strings.Join(params.Transmissions, ","))
+		if params.Transmissions != "" {
+			q.Set("transmissions", params.Transmissions)
 		}
 		if len(params.BounceClasses) > 0 {
 			bc := make([]string, len(params.BounceClasses))
@@ -485,7 +496,14 @@ type ScheduleEmailResponse struct {
 
 // ScheduleEmailData contains the result of scheduling an email.
 type ScheduleEmailData struct {
-	TransmissionID string `json:"transmission_id"`
+	// RequestID is the unique transmission ID for the scheduled email.
+	RequestID string `json:"request_id"`
+
+	// Accepted is the number of recipients that were accepted.
+	Accepted int `json:"accepted"`
+
+	// Rejected is the number of recipients that were rejected.
+	Rejected int `json:"rejected"`
 }
 
 // GetScheduledEmailResponse is the response from getting a scheduled email.
@@ -553,19 +571,27 @@ func (s *EmailService) GetScheduled(ctx context.Context, transmissionID string) 
 	return &resp, nil
 }
 
+// CancelScheduledResponse is the response from cancelling a scheduled email.
+type CancelScheduledResponse struct {
+	Message string `json:"message"`
+}
+
 // CancelScheduled cancels a pending scheduled email transmission.
 //
 // Example:
 //
-//	err := client.Emails.CancelScheduled(ctx, "transmission-123")
-func (s *EmailService) CancelScheduled(ctx context.Context, transmissionID string) error {
+//	resp, err := client.Emails.CancelScheduled(ctx, "transmission-123")
+func (s *EmailService) CancelScheduled(ctx context.Context, transmissionID string) (*CancelScheduledResponse, error) {
 	path := fmt.Sprintf("emails/scheduled/%s", url.PathEscape(transmissionID))
 
 	req, err := s.client.newRequest(ctx, http.MethodDelete, path, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	_, err = s.client.do(req, nil)
-	return err
+	var resp CancelScheduledResponse
+	if _, err := s.client.do(req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }

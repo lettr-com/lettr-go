@@ -174,7 +174,7 @@ type TemplateDetail struct {
 	Slug          string `json:"slug"`
 	ProjectID     int    `json:"project_id"`
 	FolderID      int    `json:"folder_id"`
-	ActiveVersion int    `json:"active_version"`
+	ActiveVersion *int   `json:"active_version"`
 	VersionsCount int    `json:"versions_count"`
 	Html          string `json:"html,omitempty"`
 	Json          string `json:"json,omitempty"`
@@ -298,8 +298,8 @@ type DeleteTemplateResponse struct {
 //
 // Example:
 //
-//	err := client.Templates.Delete(ctx, "welcome-email", nil)
-func (s *TemplateService) Delete(ctx context.Context, slug string, params *DeleteTemplateParams) error {
+//	resp, err := client.Templates.Delete(ctx, "welcome-email", nil)
+func (s *TemplateService) Delete(ctx context.Context, slug string, params *DeleteTemplateParams) (*DeleteTemplateResponse, error) {
 	path := fmt.Sprintf("templates/%s", url.PathEscape(slug))
 	if params != nil {
 		q := url.Values{}
@@ -313,11 +313,14 @@ func (s *TemplateService) Delete(ctx context.Context, slug string, params *Delet
 
 	req, err := s.client.newRequest(ctx, http.MethodDelete, path, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	_, err = s.client.do(req, nil)
-	return err
+	var resp DeleteTemplateResponse
+	if _, err := s.client.do(req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
 
 // GetMergeTagsParams contains optional query parameters for getting merge tags.
@@ -392,9 +395,19 @@ type GetTemplateHtmlResponse struct {
 	Data    GetTemplateHtmlData `json:"data"`
 }
 
-// GetTemplateHtmlData contains the HTML content of a template.
+// GetTemplateHtmlData contains the HTML content and merge tags of a template.
 type GetTemplateHtmlData struct {
-	Html string `json:"html"`
+	Html      string         `json:"html"`
+	MergeTags []HtmlMergeTag `json:"merge_tags"`
+	Subject   *string        `json:"subject,omitempty"`
+}
+
+// HtmlMergeTag represents a merge tag in the template HTML response.
+// This differs from MergeTag by including a Name field.
+type HtmlMergeTag struct {
+	Key      string `json:"key"`
+	Name     string `json:"name"`
+	Required bool   `json:"required"`
 }
 
 // GetHtml retrieves the rendered HTML content of a template.

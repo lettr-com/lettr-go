@@ -168,19 +168,27 @@ func (s *WebhookService) Update(ctx context.Context, webhookID string, params *U
 	return &resp, nil
 }
 
+// DeleteWebhookResponse is the response from deleting a webhook.
+type DeleteWebhookResponse struct {
+	Message string `json:"message"`
+}
+
 // Delete removes a webhook.
 //
 // Example:
 //
-//	err := client.Webhooks.Delete(ctx, "webhook-abc123")
-func (s *WebhookService) Delete(ctx context.Context, webhookID string) error {
+//	resp, err := client.Webhooks.Delete(ctx, "webhook-abc123")
+func (s *WebhookService) Delete(ctx context.Context, webhookID string) (*DeleteWebhookResponse, error) {
 	path := fmt.Sprintf("webhooks/%s", url.PathEscape(webhookID))
 
 	req, err := s.client.newRequest(ctx, http.MethodDelete, path, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	_, err = s.client.do(req, nil)
-	return err
+	var resp DeleteWebhookResponse
+	if _, err := s.client.do(req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
 }
