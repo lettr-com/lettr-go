@@ -8,6 +8,8 @@ import (
 	"testing"
 )
 
+func strPtr(s string) *string { return &s }
+
 // newTestClient creates a Client pointing to a test server.
 func newTestClient(t *testing.T, handler http.HandlerFunc) (*Client, *httptest.Server) {
 	t.Helper()
@@ -35,6 +37,9 @@ func TestNewClient(t *testing.T) {
 	}
 	if client.Templates == nil {
 		t.Error("expected Templates service to be initialized")
+	}
+	if client.Projects == nil {
+		t.Error("expected Projects service to be initialized")
 	}
 }
 
@@ -155,11 +160,14 @@ func TestListEmails(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(ListEmailsResponse{
+			Success: true,
 			Message: "Emails retrieved successfully.",
 			Data: ListEmailsData{
-				Results:    []EmailEvent{{EventID: "evt-1", Subject: "Test"}},
-				TotalCount: 1,
-				Pagination: CursorPagination{PerPage: 10},
+				Events: ListEmailsEvents{
+					Data:       []EmailEvent{{EventID: "evt-1", Subject: strPtr("Test")}},
+					TotalCount: 1,
+					Pagination: CursorPagination{PerPage: 10},
+				},
 			},
 		})
 	})
@@ -169,8 +177,11 @@ func TestListEmails(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Data.TotalCount != 1 {
-		t.Errorf("expected total count 1, got %d", resp.Data.TotalCount)
+	if resp.Data.Events.TotalCount != 1 {
+		t.Errorf("expected total count 1, got %d", resp.Data.Events.TotalCount)
+	}
+	if len(resp.Data.Events.Data) != 1 || resp.Data.Events.Data[0].EventID != "evt-1" {
+		t.Errorf("expected 1 event with id evt-1, got %+v", resp.Data.Events.Data)
 	}
 }
 
@@ -182,20 +193,28 @@ func TestGetEmail(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(GetEmailResponse{
 			Message: "Email retrieved successfully.",
-			Data: GetEmailData{
-				Results:    []EmailEvent{{EventID: "evt-1", Type: "delivery"}},
-				TotalCount: 1,
+			Data: ScheduledTransmission{
+				TransmissionID: "req-123",
+				State:          "delivered",
+				From:           "sender@example.com",
+				Subject:        "Hello",
+				Recipients:     []string{"recipient@example.com"},
+				NumRecipients:  1,
+				Events:         []EmailEvent{{EventID: "evt-1", Type: "delivery"}},
 			},
 		})
 	})
 	defer server.Close()
 
-	resp, err := client.Emails.Get(context.Background(), "req-123")
+	resp, err := client.Emails.Get(context.Background(), "req-123", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Data.Results[0].Type != "delivery" {
-		t.Errorf("expected type %q, got %q", "delivery", resp.Data.Results[0].Type)
+	if resp.Data.TransmissionID != "req-123" {
+		t.Errorf("expected transmission id %q, got %q", "req-123", resp.Data.TransmissionID)
+	}
+	if len(resp.Data.Events) != 1 || resp.Data.Events[0].Type != "delivery" {
+		t.Errorf("expected 1 delivery event, got %+v", resp.Data.Events)
 	}
 }
 
@@ -394,7 +413,7 @@ func TestNotFoundError(t *testing.T) {
 	})
 	defer server.Close()
 
-	_, err := client.Emails.Get(context.Background(), "nonexistent")
+	_, err := client.Emails.Get(context.Background(), "nonexistent", nil)
 	if err == nil {
 		t.Fatal("expected error, got nil")
 	}
@@ -428,5 +447,595 @@ func TestSetBaseURL(t *testing.T) {
 	}
 	if client.baseURL.String() != "https://custom.example.com/api/" {
 		t.Errorf("expected base URL %q, got %q", "https://custom.example.com/api/", client.baseURL.String())
+	}
+}
+
+func TestSendEmailWithCcBcc(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		var body SendEmailRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("failed to decode request body: %v", err)
+		}
+		if len(body.Cc) != 1 || body.Cc[0] != "cc@example.com" {
+			t.Errorf("unexpected cc: %v", body.Cc)
+		}
+		if len(body.Bcc) != 1 || body.Bcc[0] != "bcc@example.com" {
+			t.Errorf("unexpected bcc: %v", body.Bcc)
+		}
+		if body.ReplyTo != "reply@example.com" {
+			t.Errorf("unexpected reply_to: %s", body.ReplyTo)
+		}
+		if body.Tag != "welcome" {
+			t.Errorf("unexpected tag: %s", body.Tag)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(SendEmailResponse{
+			Message: "Email queued.",
+			Data:    SendEmailData{RequestID: "req-cc", Accepted: 3, Rejected: 0},
+		})
+	})
+	defer server.Close()
+
+	resp, err := client.Emails.Send(context.Background(), &SendEmailRequest{
+		From:    "sender@example.com",
+		To:      []string{"recipient@example.com"},
+		Cc:      []string{"cc@example.com"},
+		Bcc:     []string{"bcc@example.com"},
+		Subject: "Hello",
+		Html:    "<h1>Hello!</h1>",
+		ReplyTo: "reply@example.com",
+		Tag:     "welcome",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Data.Accepted != 3 {
+		t.Errorf("expected 3 accepted, got %d", resp.Data.Accepted)
+	}
+}
+
+func TestListEmailEvents(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/emails/events" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		if ev := r.URL.Query().Get("events"); ev != "delivery,bounce" {
+			t.Errorf("expected events=delivery,bounce, got %q", ev)
+		}
+		if pp := r.URL.Query().Get("per_page"); pp != "10" {
+			t.Errorf("expected per_page=10, got %q", pp)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(ListEmailEventsResponse{
+			Message: "Events retrieved.",
+			Data: ListEmailEventsData{
+				Events: ListEmailEventsEvents{
+					Data:       []EmailEvent{{EventID: "evt-1", Type: "delivery"}},
+					TotalCount: 1,
+					Pagination: CursorPagination{PerPage: 10},
+				},
+			},
+		})
+	})
+	defer server.Close()
+
+	resp, err := client.Emails.ListEvents(context.Background(), &ListEmailEventsParams{
+		Events:  []string{"delivery", "bounce"},
+		PerPage: 10,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Data.Events.TotalCount != 1 {
+		t.Errorf("expected total count 1, got %d", resp.Data.Events.TotalCount)
+	}
+	if resp.Data.Events.Data[0].Type != "delivery" {
+		t.Errorf("expected type %q, got %q", "delivery", resp.Data.Events.Data[0].Type)
+	}
+}
+
+func TestScheduleEmail(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/emails/scheduled" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+
+		var body map[string]interface{}
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["scheduled_at"] != "2024-12-25T10:00:00Z" {
+			t.Errorf("unexpected scheduled_at: %v", body["scheduled_at"])
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(ScheduleEmailResponse{
+			Message: "Email scheduled.",
+			Data:    ScheduleEmailData{RequestID: "tx-123", Accepted: 1, Rejected: 0},
+		})
+	})
+	defer server.Close()
+
+	resp, err := client.Emails.Schedule(context.Background(), &ScheduleEmailRequest{
+		SendEmailRequest: SendEmailRequest{
+			From:    "sender@example.com",
+			To:      []string{"recipient@example.com"},
+			Subject: "Scheduled",
+			Html:    "<h1>Hello!</h1>",
+		},
+		ScheduledAt: "2024-12-25T10:00:00Z",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Data.RequestID != "tx-123" {
+		t.Errorf("expected request ID %q, got %q", "tx-123", resp.Data.RequestID)
+	}
+	if resp.Data.Accepted != 1 {
+		t.Errorf("expected 1 accepted, got %d", resp.Data.Accepted)
+	}
+}
+
+func TestGetScheduledEmail(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/emails/scheduled/tx-123" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		scheduledAt := "2024-12-25T10:00:00Z"
+		json.NewEncoder(w).Encode(GetScheduledEmailResponse{
+			Message: "Scheduled email retrieved.",
+			Data: ScheduledTransmission{
+				TransmissionID: "tx-123",
+				State:          "scheduled",
+				ScheduledAt:    &scheduledAt,
+				From:           "sender@example.com",
+				Subject:        "Hello",
+				Recipients:     []string{"recipient@example.com"},
+				NumRecipients:  1,
+			},
+		})
+	})
+	defer server.Close()
+
+	resp, err := client.Emails.GetScheduled(context.Background(), "tx-123")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Data.State != "scheduled" {
+		t.Errorf("expected state %q, got %q", "scheduled", resp.Data.State)
+	}
+	if resp.Data.NumRecipients != 1 {
+		t.Errorf("expected num_recipients 1, got %d", resp.Data.NumRecipients)
+	}
+}
+
+func TestCancelScheduledEmail(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/emails/scheduled/tx-123" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodDelete {
+			t.Errorf("expected DELETE, got %s", r.Method)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"message":"Scheduled email cancelled."}`))
+	})
+	defer server.Close()
+
+	resp, err := client.Emails.CancelScheduled(context.Background(), "tx-123")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Message != "Scheduled email cancelled." {
+		t.Errorf("expected message %q, got %q", "Scheduled email cancelled.", resp.Message)
+	}
+}
+
+func TestVerifyDomain(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/domains/example.com/verify" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(VerifyDomainResponse{
+			Message: "Verification completed.",
+			Data: DomainVerificationView{
+				Domain:      "example.com",
+				DkimStatus:  "valid",
+				CnameStatus: "valid",
+				DmarcStatus: "valid",
+				SpfStatus:   "valid",
+			},
+		})
+	})
+	defer server.Close()
+
+	resp, err := client.Domains.Verify(context.Background(), "example.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Data.DkimStatus != "valid" {
+		t.Errorf("expected dkim_status %q, got %q", "valid", resp.Data.DkimStatus)
+	}
+}
+
+func TestCreateWebhook(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/webhooks" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+
+		var body CreateWebhookRequest
+		json.NewDecoder(r.Body).Decode(&body)
+		if body.Name != "My Webhook" {
+			t.Errorf("expected name %q, got %q", "My Webhook", body.Name)
+		}
+		if body.EventsMode != "all" {
+			t.Errorf("expected events_mode %q, got %q", "all", body.EventsMode)
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(CreateWebhookResponse{
+			Message: "Webhook created.",
+			Data:    Webhook{ID: "wh-new", Name: "My Webhook", Enabled: true},
+		})
+	})
+	defer server.Close()
+
+	resp, err := client.Webhooks.Create(context.Background(), &CreateWebhookRequest{
+		Name:       "My Webhook",
+		URL:        "https://example.com/webhook",
+		AuthType:   "none",
+		EventsMode: "all",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Data.ID != "wh-new" {
+		t.Errorf("expected ID %q, got %q", "wh-new", resp.Data.ID)
+	}
+}
+
+func TestUpdateWebhook(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/webhooks/wh-123" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPut {
+			t.Errorf("expected PUT, got %s", r.Method)
+		}
+
+		var body UpdateWebhookRequest
+		json.NewDecoder(r.Body).Decode(&body)
+		if body.Name != "Updated" {
+			t.Errorf("expected name %q, got %q", "Updated", body.Name)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(UpdateWebhookResponse{
+			Message: "Webhook updated.",
+			Data:    Webhook{ID: "wh-123", Name: "Updated", Enabled: true},
+		})
+	})
+	defer server.Close()
+
+	resp, err := client.Webhooks.Update(context.Background(), "wh-123", &UpdateWebhookRequest{
+		Name: "Updated",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Data.Name != "Updated" {
+		t.Errorf("expected name %q, got %q", "Updated", resp.Data.Name)
+	}
+}
+
+func TestDeleteWebhook(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/webhooks/wh-123" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodDelete {
+			t.Errorf("expected DELETE, got %s", r.Method)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"message":"Webhook deleted."}`))
+	})
+	defer server.Close()
+
+	resp, err := client.Webhooks.Delete(context.Background(), "wh-123")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Message != "Webhook deleted." {
+		t.Errorf("expected message %q, got %q", "Webhook deleted.", resp.Message)
+	}
+}
+
+func TestGetTemplate(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/templates/welcome" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		activeVersion := 2
+		json.NewEncoder(w).Encode(GetTemplateResponse{
+			Message: "Template retrieved.",
+			Data: TemplateDetail{
+				ID:            1,
+				Name:          "Welcome",
+				Slug:          "welcome",
+				ActiveVersion: &activeVersion,
+				VersionsCount: 2,
+			},
+		})
+	})
+	defer server.Close()
+
+	resp, err := client.Templates.Get(context.Background(), "welcome", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Data.ActiveVersion == nil || *resp.Data.ActiveVersion != 2 {
+		t.Errorf("expected active version 2, got %v", resp.Data.ActiveVersion)
+	}
+}
+
+func TestUpdateTemplate(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/templates/welcome" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPut {
+			t.Errorf("expected PUT, got %s", r.Method)
+		}
+
+		var body UpdateTemplateRequest
+		json.NewDecoder(r.Body).Decode(&body)
+		if body.Html != "<h1>Updated</h1>" {
+			t.Errorf("unexpected html: %s", body.Html)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(UpdateTemplateResponse{
+			Message: "Template updated.",
+			Data: UpdateTemplateData{
+				ID:            1,
+				Name:          "Welcome",
+				Slug:          "welcome",
+				ActiveVersion: 3,
+			},
+		})
+	})
+	defer server.Close()
+
+	resp, err := client.Templates.Update(context.Background(), "welcome", &UpdateTemplateRequest{
+		Html: "<h1>Updated</h1>",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Data.ActiveVersion != 3 {
+		t.Errorf("expected active version 3, got %d", resp.Data.ActiveVersion)
+	}
+}
+
+func TestDeleteTemplate(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/templates/welcome" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodDelete {
+			t.Errorf("expected DELETE, got %s", r.Method)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"message":"Template deleted."}`))
+	})
+	defer server.Close()
+
+	resp, err := client.Templates.Delete(context.Background(), "welcome", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Message != "Template deleted." {
+		t.Errorf("expected message %q, got %q", "Template deleted.", resp.Message)
+	}
+}
+
+func TestGetMergeTags(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/templates/welcome/merge-tags" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(GetMergeTagsResponse{
+			Message: "Merge tags retrieved.",
+			Data: GetMergeTagsData{
+				ProjectID:    1,
+				TemplateSlug: "welcome",
+				Version:      1,
+				MergeTags: []MergeTag{
+					{Key: "FIRST_NAME", Required: true, Type: "text"},
+				},
+			},
+		})
+	})
+	defer server.Close()
+
+	resp, err := client.Templates.GetMergeTags(context.Background(), "welcome", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Data.MergeTags) != 1 {
+		t.Fatalf("expected 1 merge tag, got %d", len(resp.Data.MergeTags))
+	}
+	if resp.Data.MergeTags[0].Key != "FIRST_NAME" {
+		t.Errorf("expected key %q, got %q", "FIRST_NAME", resp.Data.MergeTags[0].Key)
+	}
+}
+
+func TestGetTemplateHtml(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/templates/html" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		if pid := r.URL.Query().Get("project_id"); pid != "1" {
+			t.Errorf("expected project_id=1, got %q", pid)
+		}
+		if slug := r.URL.Query().Get("slug"); slug != "welcome" {
+			t.Errorf("expected slug=welcome, got %q", slug)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(GetTemplateHtmlResponse{
+			Success: true,
+			Data:    GetTemplateHtmlData{Html: "<h1>Hello!</h1>"},
+		})
+	})
+	defer server.Close()
+
+	resp, err := client.Templates.GetHtml(context.Background(), &GetTemplateHtmlParams{
+		ProjectID: 1,
+		Slug:      "welcome",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Data.Html != "<h1>Hello!</h1>" {
+		t.Errorf("expected html %q, got %q", "<h1>Hello!</h1>", resp.Data.Html)
+	}
+}
+
+func TestListProjects(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/projects" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(ListProjectsResponse{
+			Success: true,
+			Message: "Projects retrieved.",
+			Data: ListProjectsData{
+				Projects:   []Project{{ID: 1, Name: "Default", TeamID: 10}},
+				Pagination: PagePagination{Total: 1, PerPage: 25, CurrentPage: 1, LastPage: 1},
+			},
+		})
+	})
+	defer server.Close()
+
+	resp, err := client.Projects.List(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Data.Projects) != 1 {
+		t.Fatalf("expected 1 project, got %d", len(resp.Data.Projects))
+	}
+	if resp.Data.Projects[0].Name != "Default" {
+		t.Errorf("expected name %q, got %q", "Default", resp.Data.Projects[0].Name)
+	}
+}
+
+func TestEmailEventRcptMetaPolymorphic(t *testing.T) {
+	// Per spec: rcpt_meta is object|null for list items and array|null
+	// for event-stream payloads. The SDK must decode both shapes.
+
+	// Object form (from GET /emails).
+	objJSON := `{"event_id":"e1","rcpt_meta":{"user_id":"42","plan":"pro"}}`
+	var ev1 EmailEvent
+	if err := json.Unmarshal([]byte(objJSON), &ev1); err != nil {
+		t.Fatalf("object form failed to decode: %v", err)
+	}
+	m, ok := ev1.RcptMeta.(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected map[string]interface{}, got %T", ev1.RcptMeta)
+	}
+	if m["user_id"] != "42" {
+		t.Errorf("expected user_id=42, got %v", m["user_id"])
+	}
+
+	// Array form (from GET /emails/events).
+	arrJSON := `{"event_id":"e2","rcpt_meta":[{"user_id":"42"},{"plan":"pro"}]}`
+	var ev2 EmailEvent
+	if err := json.Unmarshal([]byte(arrJSON), &ev2); err != nil {
+		t.Fatalf("array form failed to decode: %v", err)
+	}
+	arr, ok := ev2.RcptMeta.([]interface{})
+	if !ok {
+		t.Fatalf("expected []interface{}, got %T", ev2.RcptMeta)
+	}
+	if len(arr) != 2 {
+		t.Errorf("expected 2 array items, got %d", len(arr))
+	}
+
+	// Null form.
+	nullJSON := `{"event_id":"e3","rcpt_meta":null}`
+	var ev3 EmailEvent
+	if err := json.Unmarshal([]byte(nullJSON), &ev3); err != nil {
+		t.Fatalf("null form failed to decode: %v", err)
+	}
+	if ev3.RcptMeta != nil {
+		t.Errorf("expected nil, got %v", ev3.RcptMeta)
+	}
+}
+
+func TestWebhookNullEventTypes(t *testing.T) {
+	data := `{"id":"wh-1","name":"Test","url":"https://example.com","enabled":true,"event_types":null,"auth_type":"none","has_auth_credentials":false}`
+	var wh Webhook
+	if err := json.Unmarshal([]byte(data), &wh); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+	if wh.EventTypes != nil {
+		t.Error("expected nil EventTypes for null JSON value")
+	}
+
+	events := []string{"delivery", "bounce"}
+	data2 := `{"id":"wh-2","name":"Test2","url":"https://example.com","enabled":true,"event_types":["delivery","bounce"],"auth_type":"none","has_auth_credentials":false}`
+	var wh2 Webhook
+	if err := json.Unmarshal([]byte(data2), &wh2); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+	if wh2.EventTypes == nil {
+		t.Fatal("expected non-nil EventTypes")
+	}
+	if len(*wh2.EventTypes) != len(events) {
+		t.Errorf("expected %d event types, got %d", len(events), len(*wh2.EventTypes))
 	}
 }
