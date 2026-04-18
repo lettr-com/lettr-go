@@ -26,7 +26,7 @@ import (
 
 const (
 	// Version is the current version of this SDK.
-	Version = "0.2.0"
+	Version = "0.3.0"
 
 	defaultBaseURL = "https://app.lettr.com/api/"
 	userAgent      = "lettr-go/" + Version

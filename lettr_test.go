@@ -160,7 +160,6 @@ func TestListEmails(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(ListEmailsResponse{
-			Success: true,
 			Message: "Emails retrieved successfully.",
 			Data: ListEmailsData{
 				Events: ListEmailsEvents{
@@ -951,7 +950,6 @@ func TestListProjects(t *testing.T) {
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(ListProjectsResponse{
-			Success: true,
 			Message: "Projects retrieved.",
 			Data: ListProjectsData{
 				Projects:   []Project{{ID: 1, Name: "Default", TeamID: 10}},

@@ -226,7 +226,6 @@ type ListEmailsParams struct {
 
 // ListEmailsResponse is the response from listing emails.
 type ListEmailsResponse struct {
-	Success bool           `json:"success"`
 	Message string         `json:"message"`
 	Data    ListEmailsData `json:"data"`
 }
