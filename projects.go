@@ -34,7 +34,6 @@ type ListProjectsParams struct {
 
 // ListProjectsResponse is the response from listing projects.
 type ListProjectsResponse struct {
-	Success bool             `json:"success"`
 	Message string           `json:"message"`
 	Data    ListProjectsData `json:"data"`
 }

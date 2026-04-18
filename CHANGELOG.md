@@ -7,7 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.2.0] - Unreleased
+## [0.3.0] - Unreleased
+
+Re-synced the SDK with upstream OpenAPI spec changes ([`1e1c08a`](https://github.com/TOPOL-io/lettr/commit/1e1c08a509b7bfe8a893febac05950157ad964f8)).
+
+### Changed
+
+- **Breaking:** `ListEmailsResponse.Success` and `ListProjectsResponse.Success` fields removed; the API no longer returns a top-level `success` flag. Callers should check for a non-nil `error` instead.
+- Bumped `Version` const to `0.3.0` (affects User-Agent header).
+
+## [0.2.0] - 2026-04-18
 
 Synchronized the SDK with the full Lettr OpenAPI specification.
 
