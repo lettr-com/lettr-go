@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.3.0] - Unreleased
+## [1.0.0] - 2026-04-20
+
+First stable release. The public API is now committed to Semantic Versioning — breaking changes will require a new major version. No code changes from [0.3.0].
+
+### Changed
+
+- Bumped `Version` const to `1.0.0` (affects User-Agent header).
+
+## [0.3.0] - 2026-04-20
 
 Re-synced the SDK with upstream OpenAPI spec changes ([`1e1c08a`](https://github.com/TOPOL-io/lettr/commit/1e1c08a509b7bfe8a893febac05950157ad964f8)).
 
