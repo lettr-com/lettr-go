@@ -1,8 +1,10 @@
 package lettr
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -725,10 +727,21 @@ func TestUpdateWebhook(t *testing.T) {
 			t.Errorf("expected PUT, got %s", r.Method)
 		}
 
+		raw, _ := io.ReadAll(r.Body)
+		if !bytes.Contains(raw, []byte(`"url":"https://example.com/new"`)) {
+			t.Errorf("expected url field in body, got: %s", raw)
+		}
+		if bytes.Contains(raw, []byte(`"target"`)) {
+			t.Errorf("did not expect target field in body, got: %s", raw)
+		}
+
 		var body UpdateWebhookRequest
-		json.NewDecoder(r.Body).Decode(&body)
+		json.Unmarshal(raw, &body)
 		if body.Name != "Updated" {
 			t.Errorf("expected name %q, got %q", "Updated", body.Name)
+		}
+		if body.URL != "https://example.com/new" {
+			t.Errorf("expected URL %q, got %q", "https://example.com/new", body.URL)
 		}
 
 		w.Header().Set("Content-Type", "application/json")
@@ -741,12 +754,39 @@ func TestUpdateWebhook(t *testing.T) {
 
 	resp, err := client.Webhooks.Update(context.Background(), "wh-123", &UpdateWebhookRequest{
 		Name: "Updated",
+		URL:  "https://example.com/new",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if resp.Data.Name != "Updated" {
 		t.Errorf("expected name %q, got %q", "Updated", resp.Data.Name)
+	}
+}
+
+func TestUpdateWebhookTargetDeprecated(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		if !bytes.Contains(raw, []byte(`"target":"https://example.com/legacy"`)) {
+			t.Errorf("expected legacy target field in body, got: %s", raw)
+		}
+		if bytes.Contains(raw, []byte(`"url"`)) {
+			t.Errorf("did not expect url field when only Target is set, got: %s", raw)
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(UpdateWebhookResponse{
+			Message: "Webhook updated.",
+			Data:    Webhook{ID: "wh-123", Name: "Legacy", Enabled: true},
+		})
+	})
+	defer server.Close()
+
+	_, err := client.Webhooks.Update(context.Background(), "wh-123", &UpdateWebhookRequest{
+		Target: "https://example.com/legacy",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -1024,8 +1064,8 @@ func TestWebhookNullEventTypes(t *testing.T) {
 		t.Error("expected nil EventTypes for null JSON value")
 	}
 
-	events := []string{"delivery", "bounce"}
-	data2 := `{"id":"wh-2","name":"Test2","url":"https://example.com","enabled":true,"event_types":["delivery","bounce"],"auth_type":"none","has_auth_credentials":false}`
+	events := []string{"message.delivery", "message.bounce"}
+	data2 := `{"id":"wh-2","name":"Test2","url":"https://example.com","enabled":true,"event_types":["message.delivery","message.bounce"],"auth_type":"none","has_auth_credentials":false}`
 	var wh2 Webhook
 	if err := json.Unmarshal([]byte(data2), &wh2); err != nil {
 		t.Fatalf("failed to unmarshal: %v", err)

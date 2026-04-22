@@ -27,6 +27,37 @@ type Webhook struct {
 	LastStatus         *string   `json:"last_status"`
 }
 
+// Webhook event-type constants. The Lettr API uses namespaced strings
+// (e.g. "message.delivery") on both request and response sides.
+const (
+	EventMessageInjection       = "message.injection"
+	EventMessageDelivery        = "message.delivery"
+	EventMessageBounce          = "message.bounce"
+	EventMessageDelay           = "message.delay"
+	EventMessageOutOfBand       = "message.out_of_band"
+	EventMessageSpamComplaint   = "message.spam_complaint"
+	EventMessagePolicyRejection = "message.policy_rejection"
+
+	EventEngagementClick          = "engagement.click"
+	EventEngagementOpen           = "engagement.open"
+	EventEngagementInitialOpen    = "engagement.initial_open"
+	EventEngagementAmpClick       = "engagement.amp_click"
+	EventEngagementAmpOpen        = "engagement.amp_open"
+	EventEngagementAmpInitialOpen = "engagement.amp_initial_open"
+
+	EventGenerationFailure   = "generation.generation_failure"
+	EventGenerationRejection = "generation.generation_rejection"
+
+	EventUnsubscribeList = "unsubscribe.list_unsubscribe"
+	EventUnsubscribeLink = "unsubscribe.link_unsubscribe"
+
+	EventRelayInjection = "relay.relay_injection"
+	EventRelayRejection = "relay.relay_rejection"
+	EventRelayDelivery  = "relay.relay_delivery"
+	EventRelayTempfail  = "relay.relay_tempfail"
+	EventRelayPermfail  = "relay.relay_permfail"
+)
+
 // ListWebhooksResponse is the response from listing webhooks.
 type ListWebhooksResponse struct {
 	Message string           `json:"message"`
@@ -98,7 +129,11 @@ type CreateWebhookRequest struct {
 
 // UpdateWebhookRequest represents the request body for updating a webhook.
 type UpdateWebhookRequest struct {
-	Name              string   `json:"name,omitempty"`
+	Name string `json:"name,omitempty"`
+	// URL is the destination endpoint for webhook deliveries.
+	URL string `json:"url,omitempty"`
+	// Deprecated: use URL instead. Target is retained for backwards compatibility
+	// and will be removed in a future major release.
 	Target            string   `json:"target,omitempty"`
 	AuthType          string   `json:"auth_type,omitempty"`
 	AuthUsername      string   `json:"auth_username,omitempty"`
@@ -124,13 +159,20 @@ type UpdateWebhookResponse struct {
 
 // Create creates a new webhook for event notifications.
 //
+// Event names use the namespaced form ("message.delivery", "engagement.click",
+// etc.) — see the Event* constants in this package.
+//
 // Example:
 //
 //	webhook, err := client.Webhooks.Create(ctx, &lettr.CreateWebhookRequest{
 //	    Name:       "My Webhook",
 //	    URL:        "https://example.com/webhook",
 //	    AuthType:   "none",
-//	    EventsMode: "all",
+//	    EventsMode: "selected",
+//	    Events: []string{
+//	        lettr.EventMessageDelivery,
+//	        lettr.EventMessageBounce,
+//	    },
 //	})
 func (s *WebhookService) Create(ctx context.Context, params *CreateWebhookRequest) (*CreateWebhookResponse, error) {
 	req, err := s.client.newRequest(ctx, http.MethodPost, "webhooks", params)
@@ -147,10 +189,14 @@ func (s *WebhookService) Create(ctx context.Context, params *CreateWebhookReques
 
 // Update modifies an existing webhook's settings.
 //
+// Use the URL field for the destination endpoint; the Target field is
+// deprecated and retained only for backwards compatibility.
+//
 // Example:
 //
 //	active := false
 //	updated, err := client.Webhooks.Update(ctx, "webhook-abc123", &lettr.UpdateWebhookRequest{
+//	    URL:    "https://example.com/new-webhook",
 //	    Active: &active,
 //	})
 func (s *WebhookService) Update(ctx context.Context, webhookID string, params *UpdateWebhookRequest) (*UpdateWebhookResponse, error) {
