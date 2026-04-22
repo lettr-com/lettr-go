@@ -233,6 +233,7 @@ created, err := client.Webhooks.Create(ctx, &lettr.CreateWebhookRequest{
 })
 
 // Create a webhook (receive selected events with basic auth)
+// Event names use the namespaced form — see the lettr.Event* constants.
 created, err = client.Webhooks.Create(ctx, &lettr.CreateWebhookRequest{
     Name:         "Delivery Webhook",
     URL:          "https://example.com/webhook",
@@ -240,13 +241,18 @@ created, err = client.Webhooks.Create(ctx, &lettr.CreateWebhookRequest{
     AuthUsername: "user",
     AuthPassword: "pass",
     EventsMode:   "selected",
-    Events:       []string{"delivery", "bounce", "spam_complaint"},
+    Events: []string{
+        lettr.EventMessageDelivery,
+        lettr.EventMessageBounce,
+        lettr.EventMessageSpamComplaint,
+    },
 })
 
-// Update a webhook
+// Update a webhook (use URL — the legacy Target field is deprecated)
 active := false
 updated, err := client.Webhooks.Update(ctx, "webhook-id", &lettr.UpdateWebhookRequest{
     Name:   "Renamed Webhook",
+    URL:    "https://example.com/new-webhook",
     Active: &active,
 })
 

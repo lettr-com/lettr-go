@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - Unreleased
+
+Sync with the updated webhook contract.
+
+### Added
+
+- `URL` field on `UpdateWebhookRequest` matching the new `PUT /webhooks/{id}` schema.
+- Exported event-type constants (`EventMessageDelivery`, `EventEngagementClick`, `EventUnsubscribeList`, …) covering the namespaced webhook event names.
+
+### Changed
+
+- Webhook event strings are now namespaced (`message.delivery`, `engagement.click`, …) on both request and response sides. The `[]string` field types are unchanged; callers must update string values they pass.
+- Bumped `Version` const to `1.1.0` (affects User-Agent header).
+
+### Deprecated
+
+- `UpdateWebhookRequest.Target` — use `URL` instead. The field continues to serialize as `target` for now and will be removed in a future major release.
+
 ## [1.0.0] - 2026-04-20
 
 First stable release. The public API is now committed to Semantic Versioning — breaking changes will require a new major version. No code changes from [0.3.0].
