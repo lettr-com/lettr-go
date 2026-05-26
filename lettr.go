@@ -26,7 +26,7 @@ import (
 
 const (
 	// Version is the current version of this SDK.
-	Version = "1.1.0"
+	Version = "1.2.0"
 
 	defaultBaseURL = "https://app.lettr.com/api/"
 	userAgent      = "lettr-go/" + Version
@@ -53,6 +53,7 @@ type Client struct {
 	Webhooks  *WebhookService
 	Templates *TemplateService
 	Projects  *ProjectService
+	Audience  *AudienceService
 }
 
 // NewClient creates a new Lettr API client with the given API key.
@@ -84,6 +85,7 @@ func NewClientWithHTTPClient(apiKey string, httpClient *http.Client) *Client {
 	c.Webhooks = &WebhookService{client: c}
 	c.Templates = &TemplateService{client: c}
 	c.Projects = &ProjectService{client: c}
+	c.Audience = newAudienceService(c)
 
 	return c
 }

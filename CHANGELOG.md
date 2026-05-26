@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-05-26
+
+Adds bindings for the `/audience/*` resource and tolerance for PHP-style empty-map serialization.
+
+### Added
+
+- `client.Audience` service for the `/audience/*` endpoints, with nested sub-services for `Lists`, `Contacts`, `Topics`, `Properties`, and `Segments`. Covers CRUD, bulk operations, and contact↔list/topic attachments.
+- Typed string constants for audience enums: `ContactStatus*`, `TopicDefaultSubscription*`, `TopicVisibility*`, `PropertyType*`, and `SegmentOperator*`.
+- `ContactProperties` named map type for `AudienceContact.Properties`, with a tolerant `UnmarshalJSON` that accepts the PHP/Laravel empty-associative-array form (`"properties": []`) as well as the canonical object form (`"properties": {...}`).
+- Tolerant `UnmarshalJSON` on `Error`: a 422 response carrying `"errors": []` (or `null`) now decodes to an empty `Errors` map instead of failing with a confusing `cannot unmarshal array into Go struct field` decode error. The `Errors` field type is unchanged.
+- `NullString` tri-state helper for nullable PATCH fields (`UpdateAudienceTopicRequest.Description`, `UpdateAudiencePropertyRequest.FallbackValue`, `UpdateAudienceSegmentRequest.ListID`). Field names and zero-value semantics mirror `database/sql.NullString`: nil pointer omits the field, `&NullString{}` (zero value) sends JSON null, and `NewNullString("x")` (or `&NullString{Valid: true, String: "x"}`) sends the string.
+
+### Changed
+
+- Bumped `Version` const to `1.2.0` (affects User-Agent header).
+
 ## [1.1.0] - Unreleased
 
 Sync with the updated webhook contract.
