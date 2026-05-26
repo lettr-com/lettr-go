@@ -1,6 +1,7 @@
 package lettr
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -20,6 +21,36 @@ type Error struct {
 
 	// Errors contains field-level validation errors (for 422 responses).
 	Errors map[string][]string `json:"errors,omitempty"`
+}
+
+// UnmarshalJSON tolerates a PHP/Laravel serialization quirk where an empty
+// associative array can come over the wire as `[]` instead of `{}`. For
+// Error.Errors that means a 422 response with no field-level errors may carry
+// `"errors": []`; without this tolerance the standard library would fail with
+// "cannot unmarshal array into Go struct field … of type map[string][]string"
+// and the SDK would surface a confusing decode error instead of the real 422.
+func (e *Error) UnmarshalJSON(data []byte) error {
+	// alias prevents infinite recursion into this method when we Unmarshal
+	// back through the embedded struct.
+	type alias Error
+	aux := struct {
+		*alias
+		Errors json.RawMessage `json:"errors,omitempty"`
+	}{
+		alias: (*alias)(e),
+	}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	if len(aux.Errors) == 0 {
+		return nil
+	}
+	trimmed := bytes.TrimSpace(aux.Errors)
+	if bytes.Equal(trimmed, []byte("[]")) || bytes.Equal(trimmed, []byte("null")) {
+		// No field-level errors — leave e.Errors nil.
+		return nil
+	}
+	return json.Unmarshal(aux.Errors, &e.Errors)
 }
 
 // Error implements the error interface.
