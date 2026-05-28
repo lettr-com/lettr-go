@@ -26,7 +26,7 @@ import (
 
 const (
 	// Version is the current version of this SDK.
-	Version = "1.2.0"
+	Version = "1.3.0"
 
 	defaultBaseURL = "https://app.lettr.com/api/"
 	userAgent      = "lettr-go/" + Version
@@ -54,6 +54,7 @@ type Client struct {
 	Templates *TemplateService
 	Projects  *ProjectService
 	Audience  *AudienceService
+	Campaigns *CampaignService
 }
 
 // NewClient creates a new Lettr API client with the given API key.
@@ -86,6 +87,7 @@ func NewClientWithHTTPClient(apiKey string, httpClient *http.Client) *Client {
 	c.Templates = &TemplateService{client: c}
 	c.Projects = &ProjectService{client: c}
 	c.Audience = newAudienceService(c)
+	c.Campaigns = &CampaignService{client: c}
 
 	return c
 }
