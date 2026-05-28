@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-05-28
+
+Adds bindings for the `/campaigns/*` resource.
+
+### Added
+
+- `client.Campaigns` service for the `/campaigns/*` endpoints, with methods: `List`, `Get`, `ListEvents`, `Send`, `Schedule`, and `Unschedule`. The campaigns API is read- and lifecycle-action-only (no create/update/delete); `Send`/`Schedule`/`Unschedule` require a non-sandbox key.
+- Typed string constants for campaign enums: `CampaignStatus*` (`draft`, `scheduled`, `preparing`, `in_review`, `sending`, `sent`, `failed`) and `CampaignEventType*` (`injection`, `delivery`, `bounce`, `spam_complaint`, `open`, `click`, `list_unsubscribe`).
+- `ListEvents` uses cursor-based pagination: `ListCampaignEventsData.NextCursor` is non-nil while more pages remain and nil once exhausted.
+- `Schedule` rejects a nil `*ScheduleCampaignRequest` with a clear client-side error instead of sending the body literal `null` to the server.
+
+### Changed
+
+- Bumped `Version` const to `1.3.0` (affects User-Agent header).
+
 ## [1.2.0] - 2026-05-26
 
 Adds bindings for the `/audience/*` resource and tolerance for PHP-style empty-map serialization.

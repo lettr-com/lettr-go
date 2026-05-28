@@ -322,6 +322,51 @@ projects, err = client.Projects.List(ctx, &lettr.ListProjectsParams{
 })
 ```
 
+### Campaigns
+
+```go
+// List campaigns (optionally filter by status)
+campaigns, err := client.Campaigns.List(ctx, &lettr.ListCampaignsParams{
+    Status: lettr.CampaignStatusSent,
+    Page:    1,
+    PerPage: 20,
+})
+
+// Get a single campaign, including its rendered HTML content
+campaign, err := client.Campaigns.Get(ctx, "campaign-id")
+
+// List engagement events (cursor-based pagination)
+params := &lettr.ListCampaignEventsParams{
+    EventType: lettr.CampaignEventTypeClick,
+    Limit:     50,
+}
+for {
+    page, err := client.Campaigns.ListEvents(ctx, "campaign-id", params)
+    if err != nil {
+        return err
+    }
+    for _, event := range page.Data.Events {
+        // ... process each event
+        _ = event
+    }
+    if page.Data.NextCursor == nil {
+        break
+    }
+    params.Cursor = *page.Data.NextCursor
+}
+
+// Send a draft campaign now
+sent, err := client.Campaigns.Send(ctx, "campaign-id")
+
+// Schedule a campaign for future delivery
+scheduled, err := client.Campaigns.Schedule(ctx, "campaign-id", &lettr.ScheduleCampaignRequest{
+    ScheduledAt: "2026-06-01T09:00:00+00:00",
+})
+
+// Cancel a scheduled send (returns the campaign to draft)
+_, err = client.Campaigns.Unschedule(ctx, "campaign-id")
+```
+
 ### System
 
 ```go
@@ -365,6 +410,7 @@ if err != nil {
 | `client.Webhooks` | `List`, `Get`, `Create`, `Update`, `Delete` |
 | `client.Templates` | `List`, `Get`, `Create`, `Update`, `Delete`, `GetMergeTags`, `GetHtml` |
 | `client.Projects` | `List` |
+| `client.Campaigns` | `List`, `Get`, `ListEvents`, `Send`, `Schedule`, `Unschedule` |
 | `client` (system) | `HealthCheck`, `ValidateAPIKey` |
 
 ## Versioning & Releases

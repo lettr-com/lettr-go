@@ -43,6 +43,12 @@ func TestNewClient(t *testing.T) {
 	if client.Projects == nil {
 		t.Error("expected Projects service to be initialized")
 	}
+	if client.Audience == nil {
+		t.Error("expected Audience service to be initialized")
+	}
+	if client.Campaigns == nil {
+		t.Error("expected Campaigns service to be initialized")
+	}
 }
 
 func TestHealthCheck(t *testing.T) {
