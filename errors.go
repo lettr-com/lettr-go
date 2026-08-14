@@ -94,6 +94,42 @@ func IsUnauthorized(err error) bool {
 	return false
 }
 
+// ErrorCodeResourceAlreadyExists is the machine-readable code the API sends
+// when a create collides with an existing resource.
+const ErrorCodeResourceAlreadyExists = "resource_already_exists"
+
+// IsConflict returns true if the error is a 409 Conflict error.
+func IsConflict(err error) bool {
+	if e, ok := err.(*Error); ok {
+		return e.StatusCode == http.StatusConflict
+	}
+	return false
+}
+
+// IsContactAlreadyExists returns true if the error is the 409 that
+// AudienceContactService.Create returns when the email is already in the team's
+// audience.
+//
+//	_, err := client.Audience.Contacts.Create(ctx, &lettr.CreateAudienceContactRequest{Email: email})
+//	if lettr.IsContactAlreadyExists(err) {
+//		// Client-correctable: update the existing contact instead.
+//	}
+//
+// This is not a retryable failure. The API used to let a duplicate escape as an
+// HTTP 500 with the misleading "send_error" code (it names email delivery,
+// which is not involved here); a retry-on-5xx policy would retry it pointlessly.
+// It is now a 409, and a 409 here must not be retried.
+//
+// A 409 that carries no error code also counts, so the check still works
+// against an API deployment that predates the change.
+func IsContactAlreadyExists(err error) bool {
+	e, ok := err.(*Error)
+	if !ok || e.StatusCode != http.StatusConflict {
+		return false
+	}
+	return e.ErrorCode == "" || e.ErrorCode == ErrorCodeResourceAlreadyExists
+}
+
 // parseError reads the response body and constructs an *Error.
 func parseError(resp *http.Response) error {
 	apiErr := &Error{
