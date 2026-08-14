@@ -10,8 +10,11 @@ import (
 )
 
 const testListID = "0193e6a8-1f3a-7c2a-b9e2-1aa1d2e5d3f0"
+const testSecondListID = "0193e6a8-2a4b-7d1c-a3f5-2bb2e3f6e4a1"
 const testContactID = "0193e6b0-9c1d-7d4f-a8f1-cef9a1b2d3e4"
+const testSecondContactID = "0193e6b0-aaaa-7d4f-a8f1-cef9a1b2d3e4"
 const testTopicID = "0193e6b1-aaaa-7d4f-a8f1-bbbbbbbbbbbb"
+const testSecondTopicID = "0193e6b1-bbbb-7d4f-a8f1-cccccccccccc"
 const testPropertyID = "0193e6b2-cccc-7d4f-a8f1-dddddddddddd"
 const testSegmentID = "0193e6b3-eeee-7d4f-a8f1-ffffffffffff"
 
@@ -462,6 +465,227 @@ func TestBulkCreateAudienceContacts(t *testing.T) {
 	}
 }
 
+// The pre-TPL-2105 payload must go out byte-identical: no "contacts" key, and
+// no "update_existing" unless the caller asked for it.
+func TestBulkCreateAudienceContactsLegacyPayloadUnchanged(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		var raw map[string]json.RawMessage
+		json.NewDecoder(r.Body).Decode(&raw)
+		for _, key := range []string{"contacts", "list_ids", "topics", "update_existing"} {
+			if _, ok := raw[key]; ok {
+				t.Errorf("expected %q to be omitted from a legacy payload, got %s", key, raw[key])
+			}
+		}
+		if _, ok := raw["emails"]; !ok {
+			t.Error("expected emails in the payload")
+		}
+		w.WriteHeader(http.StatusCreated)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(BulkCreateAudienceContactsResponse{
+			Message: "Contacts created.",
+			Data:    BulkCreateAudienceContactsData{Created: 2},
+		})
+	})
+	defer server.Close()
+
+	resp, err := client.Audience.Contacts.BulkCreate(context.Background(), &BulkCreateAudienceContactsRequest{
+		Emails: []string{"jane@example.com", "joe@example.com"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// An API deployment older than TPL-2105 sends only the two counters; the
+	// new fields must read as zero values rather than blowing up.
+	if resp.Data.HasErrors() {
+		t.Error("expected no errors")
+	}
+	if len(resp.Data.ContactIDs()) != 0 {
+		t.Errorf("expected no contact ids, got %v", resp.Data.ContactIDs())
+	}
+}
+
+func TestBulkCreateAudienceContactsWithRows(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		var body BulkCreateAudienceContactsRequest
+		json.NewDecoder(r.Body).Decode(&body)
+
+		if len(body.Emails) != 0 {
+			t.Errorf("expected no emails when using rows, got %v", body.Emails)
+		}
+		if len(body.Contacts) != 2 {
+			t.Fatalf("expected 2 rows, got %d", len(body.Contacts))
+		}
+		if body.Contacts[0].Properties["plan"] != "pro" {
+			t.Errorf("unexpected row properties: %v", body.Contacts[0].Properties)
+		}
+		if len(body.Contacts[0].ListIDs) != 1 || body.Contacts[0].ListIDs[0] != testListID {
+			t.Errorf("unexpected row list_ids: %v", body.Contacts[0].ListIDs)
+		}
+		// The row-level opt-out is what must survive the round trip — it beats
+		// the batch-wide opt-in below.
+		if len(body.Contacts[1].Topics) != 1 || body.Contacts[1].Topics[0].Subscription != TopicOptOut {
+			t.Errorf("unexpected row topics: %v", body.Contacts[1].Topics)
+		}
+		if len(body.Topics) != 1 || body.Topics[0].Subscription != TopicOptIn {
+			t.Errorf("unexpected batch topics: %v", body.Topics)
+		}
+		if !body.UpdateExisting {
+			t.Error("expected update_existing to be true")
+		}
+
+		w.WriteHeader(http.StatusCreated)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(BulkCreateAudienceContactsResponse{
+			Message: "Contacts created.",
+			Data: BulkCreateAudienceContactsData{
+				Created: 2,
+				Contacts: []BulkAudienceContactRef{
+					{ID: testContactID, Email: "cara@example.com", Created: true},
+					{ID: testSecondContactID, Email: "dan@example.com", Created: true},
+				},
+			},
+		})
+	})
+	defer server.Close()
+
+	resp, err := client.Audience.Contacts.BulkCreate(context.Background(), &BulkCreateAudienceContactsRequest{
+		Contacts: []BulkAudienceContactRow{
+			{
+				Email:      "cara@example.com",
+				Properties: map[string]string{"plan": "pro"},
+				ListIDs:    []string{testListID},
+			},
+			{
+				Email:  "dan@example.com",
+				Topics: []AudienceTopicSubscription{UnsubscribeTopic(testTopicID)},
+			},
+		},
+		ListIDs:        []string{testSecondListID},
+		Topics:         []AudienceTopicSubscription{SubscribeTopic(testTopicID)},
+		Properties:     map[string]string{"source": "spring-campaign"},
+		UpdateExisting: true,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// IDs come back in submission order, so no follow-up lookup is needed.
+	ids := resp.Data.ContactIDs()
+	if len(ids) != 2 || ids[0] != testContactID || ids[1] != testSecondContactID {
+		t.Errorf("unexpected contact ids: %v", ids)
+	}
+	// IDFor is case-insensitive: the API normalizes addresses.
+	if id, ok := resp.Data.IDFor("CARA@example.com "); !ok || id != testContactID {
+		t.Errorf("expected to find cara's id, got %q (found=%v)", id, ok)
+	}
+	if _, ok := resp.Data.IDFor("nobody@example.com"); ok {
+		t.Error("expected no id for an unsubmitted address")
+	}
+}
+
+// Partial success: HTTP 201 with errors populated. BulkCreate returns a nil
+// error even though one row never landed — that is the trap this pins down.
+func TestBulkCreateAudienceContactsPartialFailure(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(BulkCreateAudienceContactsResponse{
+			Message: "Contacts created successfully.",
+			Data: BulkCreateAudienceContactsData{
+				Created:    1,
+				ErrorCount: 1,
+				Errors: []BulkAudienceContactError{{
+					Index:     1,
+					Email:     "not-an-email",
+					ErrorCode: BulkContactErrorInvalidEmail,
+					Error:     "The email address is not valid.",
+				}},
+				Contacts: []BulkAudienceContactRef{
+					{ID: testContactID, Email: "cara@example.com", Created: true},
+				},
+			},
+		})
+	})
+	defer server.Close()
+
+	resp, err := client.Audience.Contacts.BulkCreate(context.Background(), &BulkCreateAudienceContactsRequest{
+		Contacts: []BulkAudienceContactRow{
+			{Email: "cara@example.com"},
+			{Email: "not-an-email"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected a nil error on partial success, got: %v", err)
+	}
+	if !resp.Data.HasErrors() {
+		t.Fatal("expected HasErrors to report the skipped row")
+	}
+	if resp.Data.Errors[0].Index != 1 {
+		t.Errorf("expected index 1, got %d", resp.Data.Errors[0].Index)
+	}
+	if resp.Data.Errors[0].ErrorCode != BulkContactErrorInvalidEmail {
+		t.Errorf("unexpected error code: %s", resp.Data.Errors[0].ErrorCode)
+	}
+	if len(resp.Data.Contacts) != 1 {
+		t.Errorf("expected only the row that landed, got %d", len(resp.Data.Contacts))
+	}
+}
+
+func TestCreateAudienceContactDuplicate(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{
+			"message":    "A contact with the email jane@example.com already exists.",
+			"error_code": ErrorCodeResourceAlreadyExists,
+		})
+	})
+	defer server.Close()
+
+	_, err := client.Audience.Contacts.Create(context.Background(), &CreateAudienceContactRequest{
+		Email: "jane@example.com",
+	})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !IsContactAlreadyExists(err) {
+		t.Errorf("expected IsContactAlreadyExists, got: %v", err)
+	}
+	if !IsConflict(err) {
+		t.Errorf("expected IsConflict, got: %v", err)
+	}
+	// Previously a 500 send_error, which a retry-on-5xx policy would retry.
+	apiErr, ok := err.(*Error)
+	if !ok {
+		t.Fatalf("expected *Error, got %T", err)
+	}
+	if apiErr.StatusCode != http.StatusConflict {
+		t.Errorf("expected 409, got %d", apiErr.StatusCode)
+	}
+}
+
+func TestCreateAudienceContactOtherConflictIsNotDuplicate(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		json.NewEncoder(w).Encode(map[string]string{
+			"message":    "Something else conflicted.",
+			"error_code": "some_future_code",
+		})
+	})
+	defer server.Close()
+
+	_, err := client.Audience.Contacts.Create(context.Background(), &CreateAudienceContactRequest{
+		Email: "jane@example.com",
+	})
+	if IsContactAlreadyExists(err) {
+		t.Errorf("expected an unrelated 409 not to be treated as a duplicate: %v", err)
+	}
+	if !IsConflict(err) {
+		t.Errorf("expected IsConflict, got: %v", err)
+	}
+}
+
 func TestAttachContactToList(t *testing.T) {
 	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		expected := "/audience/contacts/" + testContactID + "/lists/" + testListID
@@ -612,6 +836,78 @@ func TestUnsubscribeContactFromTopic(t *testing.T) {
 
 	if err := client.Audience.Contacts.UnsubscribeFromTopic(context.Background(), testContactID, testTopicID); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestBulkSubscribeContactsToTopics(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/audience/contacts/topics/bulk" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Errorf("expected POST, got %s", r.Method)
+		}
+		var body BulkContactsTopicsRequest
+		json.NewDecoder(r.Body).Decode(&body)
+		if len(body.ContactIDs) != 2 || len(body.TopicIDs) != 2 {
+			t.Errorf("unexpected body: %+v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(BulkSubscribeContactsToTopicsResponse{
+			Message: "Contacts subscribed.",
+			Data:    BulkSubscribeContactsToTopicsData{Subscribed: 3, AlreadySubscribed: 1, TotalPairs: 4},
+		})
+	})
+	defer server.Close()
+
+	resp, err := client.Audience.Contacts.BulkSubscribeToTopics(context.Background(), &BulkContactsTopicsRequest{
+		ContactIDs: []string{testContactID, testSecondContactID},
+		TopicIDs:   []string{testTopicID, testSecondTopicID},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// 2 contacts × 2 topics — the endpoint works over the cartesian product.
+	if resp.Data.TotalPairs != 4 {
+		t.Errorf("expected 4 pairs, got %d", resp.Data.TotalPairs)
+	}
+	if resp.Data.Subscribed != 3 || resp.Data.AlreadySubscribed != 1 {
+		t.Errorf("unexpected counts: %+v", resp.Data)
+	}
+}
+
+func TestBulkUnsubscribeContactsFromTopics(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/audience/contacts/topics/bulk" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodDelete {
+			t.Errorf("expected DELETE, got %s", r.Method)
+		}
+		// The body is the point: DELETE carries the pairs to remove.
+		var body BulkContactsTopicsRequest
+		json.NewDecoder(r.Body).Decode(&body)
+		if len(body.TopicIDs) != 2 {
+			t.Errorf("expected the topic ids in the DELETE body, got %+v", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(BulkUnsubscribeContactsFromTopicsResponse{
+			Message: "Contacts unsubscribed.",
+			Data:    BulkUnsubscribeContactsFromTopicsData{Unsubscribed: 2, TotalPairs: 4},
+		})
+	})
+	defer server.Close()
+
+	resp, err := client.Audience.Contacts.BulkUnsubscribeFromTopics(context.Background(), &BulkContactsTopicsRequest{
+		ContactIDs: []string{testContactID, testSecondContactID},
+		TopicIDs:   []string{testTopicID, testSecondTopicID},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Pairs that did not exist are ignored, so this is below TotalPairs.
+	if resp.Data.Unsubscribed != 2 || resp.Data.TotalPairs != 4 {
+		t.Errorf("unexpected counts: %+v", resp.Data)
 	}
 }
 

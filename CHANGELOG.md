@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Covers the reworked bulk contact import (TPL-2105) and the duplicate-create fix. Everything here is additive — code written against 1.3.0 keeps compiling and sends the exact same payloads.
+
+### Added
+
+- **Per-contact bulk create.** `BulkCreateAudienceContactsRequest` gains a `Contacts []BulkAudienceContactRow` field: one row per contact, each with its own `Properties`, `ListIDs` and `Topics`. It is the alternative to the original flat `Emails` slice — exactly one of the two must be filled in.
+
+  ```go
+  resp, err := client.Audience.Contacts.BulkCreate(ctx, &lettr.BulkCreateAudienceContactsRequest{
+      Contacts: []lettr.BulkAudienceContactRow{
+          {Email: "cara@example.com", Properties: map[string]string{"plan": "pro"}},
+          {Email: "dan@example.com", Topics: []lettr.AudienceTopicSubscription{
+              lettr.UnsubscribeTopic("01h-promos"),
+          }},
+      },
+      ListIDs: []string{"01h-everyone"},
+  })
+  ```
+- New request types `BulkAudienceContactRow` and `AudienceTopicSubscription`, with the `SubscribeTopic(id)` / `UnsubscribeTopic(id)` constructors and the `TopicOptIn` / `TopicOptOut` constants.
+
+  These say what a request should *do* with a topic, and are deliberately separate from a topic's `DefaultSubscription`, which describes how the topic behaves for a contact that says nothing. An opt-out on a topic whose default is opt-out suppresses the auto-subscription in the same request instead of needing a second call.
+- **Batch-wide `ListIDs` and `Topics`,** plus `UpdateExisting`, on `BulkCreateAudienceContactsRequest`. Batch-wide lists and topics are unioned into every row; a row-level property key or opt-out wins over the batch-wide value. `UpdateExisting: true` merges properties (submitted keys overwrite, absent keys are preserved) and allows dropping a subscription. It is `omitempty`, so a legacy request stays byte-identical on the wire.
+- **Bulk create now reports what happened per row.** `BulkCreateAudienceContactsData` gains `Updated`, `ErrorCount`, `Errors` (`[]BulkAudienceContactError` — `Index`, `Email`, `ErrorCode`, `Error`) and `Contacts` (`[]BulkAudienceContactRef` — `ID`, `Email`, `Created`), plus the methods `HasErrors()`, `ContactIDs()` and `IDFor(email)`. `Created` and `AlreadyExisted` keep their exact meaning, and the new fields decode to zero values against an API deployment that predates the change.
+
+  A bulk create can **partially succeed**: rows that fail validation are skipped and returned in `Errors` while the rest of the batch commits, and the call still returns HTTP 201. A nil error does not mean every row landed — check `Data.HasErrors()`.
+
+  Note that `AlreadyExisted` and `Updated` overlap by design. They answer different questions ("was the address already in the audience?" vs "did this request change the contact?"), so they do not sum to the row count: a contact that already existed and got attached to a list is counted in both.
+- `BulkContactError*` constants for the per-row skip reasons (`missing_email`, `invalid_email`, `invalid_property_value`, `unknown_property_key`, `unknown_list`, `unknown_topic`, `invalid_topic_subscription`). `BulkAudienceContactError.ErrorCode` is a plain `string`, so a code added server-side is still readable.
+- **Bulk topic subscribe/unsubscribe** — two methods on `client.Audience.Contacts`, mirroring the existing `BulkAttachToLists` / `BulkDetachFromLists` pair:
+  - `BulkSubscribeToTopics(ctx, *BulkContactsTopicsRequest)` — `POST /audience/contacts/topics/bulk`, returns `Subscribed`, `AlreadySubscribed`, `TotalPairs`.
+  - `BulkUnsubscribeFromTopics(ctx, *BulkContactsTopicsRequest)` — `DELETE /audience/contacts/topics/bulk` with a request body, returns `Unsubscribed`, `TotalPairs`. Pairs that do not exist are ignored.
+
+  Both process every `ContactIDs` × `TopicIDs` combination (up to 1000 × 50). Pass `Data.ContactIDs()` from a bulk create — no ID lookup needed.
+- `IsConflict(err)` and `IsContactAlreadyExists(err)` helpers, alongside the existing `IsNotFound` / `IsValidationError` / `IsUnauthorized`, plus the `ErrorCodeResourceAlreadyExists` constant.
+
+### Changed
+
+- Creating a contact whose email already exists now comes back as a 409 with `error_code: "resource_already_exists"`, detectable via `IsContactAlreadyExists(err)`. The API previously let this escape as HTTP 500 with the misleading `send_error` code, which names email delivery — not involved unless double opt-in is supplied. **If your retry policy retries 5xx, duplicate creates are no longer retried** — which was pointless anyway. Any error mapping or docs of yours that name `send_error` for this endpoint should be corrected.
+
+  The returned error is still a plain `*Error`, so existing type assertions and error handling are unaffected.
+- `BulkCreateAudienceContactsRequest.Emails` is now `omitempty`, so it is left out of the payload when the `Contacts` shape is used. A request that sets `Emails` serializes exactly as before.
+
 ## [1.3.0] - 2026-05-28
 
 Adds bindings for the `/campaigns/*` resource.
