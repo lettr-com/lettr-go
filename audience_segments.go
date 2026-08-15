@@ -42,8 +42,8 @@ type SegmentCondition struct {
 	Value    *string `json:"value,omitempty"`
 }
 
-// SegmentConditionGroup is a set of conditions joined by AND. Multiple groups
-// within a segment are joined by OR.
+// SegmentConditionGroup is a set of conditions joined by OR. Multiple groups
+// within a segment are joined by AND, i.e. (A OR B) AND (C OR D).
 type SegmentConditionGroup struct {
 	Conditions []SegmentCondition `json:"conditions"`
 }
