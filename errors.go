@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -18,6 +19,13 @@ type Error struct {
 
 	// ErrorCode is a machine-readable error code (e.g. "validation_error", "not_found").
 	ErrorCode string `json:"error_code,omitempty"`
+
+	// RetryAfter is the Retry-After header in seconds, when the API sent one.
+	//
+	// It is what separates the retryable failures from the permanent ones:
+	// idempotency_in_progress carries it and should be retried with the same
+	// key, while idempotency_key_conflict does not and never will succeed.
+	RetryAfter int `json:"-"`
 
 	// Errors contains field-level validation errors (for 422 responses).
 	Errors map[string][]string `json:"errors,omitempty"`
@@ -94,6 +102,43 @@ func IsUnauthorized(err error) bool {
 	return false
 }
 
+// ErrorCodeIdempotencyKeyConflict is sent when an Idempotency-Key was already
+// used with a different request payload.
+const ErrorCodeIdempotencyKeyConflict = "idempotency_key_conflict"
+
+// ErrorCodeIdempotencyInProgress is sent when the original request for an
+// Idempotency-Key is still being processed.
+const ErrorCodeIdempotencyInProgress = "idempotency_in_progress"
+
+// IsIdempotencyConflict reports whether err is the 409 for an Idempotency-Key
+// reused with a different payload.
+//
+// Never retry this. Two different emails were sent under one key, which is a
+// bug on the caller's side; the same request will fail identically forever.
+// Use a key that is unique per logical send, or send the payload the key was
+// first used with.
+func IsIdempotencyConflict(err error) bool {
+	e, ok := err.(*Error)
+	if !ok || e.StatusCode != http.StatusConflict {
+		return false
+	}
+	return e.ErrorCode == ErrorCodeIdempotencyKeyConflict
+}
+
+// IsIdempotencyInProgress reports whether err is the 409 for a send whose
+// original request is still running.
+//
+// Unlike IsIdempotencyConflict this one is retryable, and must be retried with
+// the same key - a fresh key would send a second email. Wait Error.RetryAfter
+// seconds first.
+func IsIdempotencyInProgress(err error) bool {
+	e, ok := err.(*Error)
+	if !ok || e.StatusCode != http.StatusConflict {
+		return false
+	}
+	return e.ErrorCode == ErrorCodeIdempotencyInProgress
+}
+
 // ErrorCodeResourceAlreadyExists is the machine-readable code the API sends
 // when a create collides with an existing resource.
 const ErrorCodeResourceAlreadyExists = "resource_already_exists"
@@ -147,6 +192,10 @@ func parseError(resp *http.Response) error {
 
 	if apiErr.Message == "" {
 		apiErr.Message = http.StatusText(resp.StatusCode)
+	}
+
+	if seconds, err := strconv.Atoi(resp.Header.Get("Retry-After")); err == nil && seconds > 0 {
+		apiErr.RetryAfter = seconds
 	}
 
 	return apiErr

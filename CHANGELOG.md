@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-10
+
+Brings this client level with lettr-php: template modules, the folders endpoint, preparation status, and idempotent sends. Everything is additive - code written against 1.4.1 keeps compiling and sends identical requests.
+
+### Added
+
+- **`client.Folders.List()`** - the folders templates are filed into, each with its `Purpose` and `TemplatesCount`. This is what `CreateTemplateRequest.FolderID` was missing: nothing else returned a folder id, so a caller either omitted it and accepted whichever folder the API picked, or hardcoded an integer read out of an app URL. Read-only, because deleting a folder moves or deletes the templates inside it.
+- **`TemplatePurpose`** (`PurposeTransactional`, `PurposeCampaign`) on `CreateTemplateRequest`, on every template response, and as a `ListTemplatesParams` filter. `IsCampaign()` reads it, treating an empty value - from an API that predates the field - as transactional.
+- **`TemplatePreparationStatus`** (`PreparationPending`, `PreparationReady`, `PreparationFailed`) on every template response, with `Settled()`.
+
+  `Settled()` rather than `Ready()` on purpose: this answers "is what I sent what will go out", not "can I send this". After an *update* the previous render stays in place, so a pending template is still sendable - it is serving the old content. An empty status counts as settled, because on an API that predates the field every template with HTML was simply usable.
+- **`ListTemplatesParams.FolderID`** - one `PerPage: 100` call reconciles a whole bulk import instead of a detail call per template, each dragging the full HTML payload against the same rate limit. A folder outside the resolved project is a 404, not an empty list, so a typo cannot be misread as "nothing is there yet".
+- **`WithIdempotencyKey`** on `Emails.Send`, as a variadic option - existing two-argument calls are unaffected. Reuse the key when you retry and the API returns the original result instead of delivering a second email; `SendEmailData.Replayed` says when that happened.
+
+  ```go
+  resp, err := client.Emails.Send(ctx, params, lettr.WithIdempotencyKey("order-12345"))
+  resp.Data.Replayed // true → replayed an earlier send, no second email went out
+  ```
+
+  You choose the key; the SDK never generates one. It only works if both attempts use the same value, and the SDK does not retry - one `Send` is one HTTP request - so the retry is yours. A malformed key returns an error **before any request goes out**; `IsValidIdempotencyKey` is exported for callers deriving keys from their own ids.
+- **`IsIdempotencyInProgress`** and **`IsIdempotencyConflict`**, because one is safe to retry and the other is not. The first should be retried with the *same* key after `Error.RetryAfter` seconds; the second means that key was used with a different payload and will fail identically forever.
+- **`Error.RetryAfter`** - the `Retry-After` header in seconds, when the API sent one.
+
+### Notes
+
+- Keys are scoped per team **and** API key, so the same string through a different API key is a different key. The provider retains one for 24 hours.
+
 ## [1.4.1] - 2026-08-15
 
 ### Fixed
