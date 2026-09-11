@@ -124,6 +124,13 @@ type SendEmailData struct {
 
 	// Rejected is the number of recipients that were rejected.
 	Rejected int `json:"rejected"`
+
+	// Replayed is true when this response replayed an earlier send under the
+	// same idempotency key - no second email went out. It is still a success.
+	//
+	// Read from the Idempotency-Replayed response header rather than the body,
+	// so it is only ever set when WithIdempotencyKey was used.
+	Replayed bool `json:"-"`
 }
 
 // EmailEvent represents a single event in an email's lifecycle
@@ -269,16 +276,46 @@ type GetEmailResponse struct {
 //	    Subject: "Hello from Lettr",
 //	    Html:    "<h1>Hello!</h1>",
 //	})
-func (s *EmailService) Send(ctx context.Context, params *SendEmailRequest) (*SendEmailResponse, error) {
+//
+// Pass WithIdempotencyKey to make a retry safe:
+//
+//	resp, err := client.Emails.Send(ctx, params,
+//	    lettr.WithIdempotencyKey("order-confirmation-12345"))
+//
+//	resp.Data.Replayed // true → this replayed an earlier send
+//
+// The options are variadic, so existing two-argument calls are unaffected.
+func (s *EmailService) Send(ctx context.Context, params *SendEmailRequest, opts ...SendOption) (*SendEmailResponse, error) {
+	var cfg sendConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	// Checked here so a malformed key fails locally instead of costing a round
+	// trip and a 422.
+	if err := cfg.validate(); err != nil {
+		return nil, err
+	}
+
 	req, err := s.client.newRequest(ctx, http.MethodPost, "emails", params)
 	if err != nil {
 		return nil, err
 	}
 
+	if cfg.idempotencyKey != "" {
+		req.Header.Set("Idempotency-Key", cfg.idempotencyKey)
+	}
+
 	var resp SendEmailResponse
-	if _, err := s.client.do(req, &resp); err != nil {
+	httpResp, err := s.client.do(req, &resp)
+	if err != nil {
 		return nil, err
 	}
+
+	if httpResp != nil {
+		resp.Data.Replayed = strings.EqualFold(httpResp.Header.Get("Idempotency-Replayed"), "true")
+	}
+
 	return &resp, nil
 }
 

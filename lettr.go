@@ -26,7 +26,7 @@ import (
 
 const (
 	// Version is the current version of this SDK.
-	Version = "1.4.1"
+	Version = "1.5.0"
 
 	defaultBaseURL = "https://app.lettr.com/api/"
 	userAgent      = "lettr-go/" + Version
@@ -53,6 +53,7 @@ type Client struct {
 	Webhooks  *WebhookService
 	Templates *TemplateService
 	Projects  *ProjectService
+	Folders   *FolderService
 	Audience  *AudienceService
 	Campaigns *CampaignService
 }
@@ -86,6 +87,7 @@ func NewClientWithHTTPClient(apiKey string, httpClient *http.Client) *Client {
 	c.Webhooks = &WebhookService{client: c}
 	c.Templates = &TemplateService{client: c}
 	c.Projects = &ProjectService{client: c}
+	c.Folders = &FolderService{client: c}
 	c.Audience = newAudienceService(c)
 	c.Campaigns = &CampaignService{client: c}
 

@@ -14,15 +14,64 @@ type TemplateService struct {
 	client *Client
 }
 
+// TemplatePurpose is the module a template belongs to.
+//
+// The two do not mix: only campaign templates can be picked by the campaign
+// builder, and only transactional ones can be sent as single emails.
+type TemplatePurpose string
+
+const (
+	PurposeTransactional TemplatePurpose = "transactional"
+	PurposeCampaign      TemplatePurpose = "campaign"
+)
+
+// IsCampaign reports whether the template belongs to the campaign module.
+//
+// An empty purpose - from an API deployment that predates the field - counts
+// as transactional, which is what such a template was.
+func (p TemplatePurpose) IsCampaign() bool {
+	return p == PurposeCampaign
+}
+
+// TemplatePreparationStatus is how far a template has got through preparation.
+//
+// Creating or updating a template through the API defers image migration and
+// HTML rendering to a background job. On a create with JSON there is no HTML at
+// all until it finishes; on an update the previous render stays in place, so
+// the template is still sendable but is serving the old content.
+type TemplatePreparationStatus string
+
+const (
+	PreparationPending TemplatePreparationStatus = "pending"
+	PreparationReady   TemplatePreparationStatus = "ready"
+	PreparationFailed  TemplatePreparationStatus = "failed"
+)
+
+// Settled reports whether the content you last sent is the content that will
+// go out.
+//
+// Deliberately not named Ready: this is not the same question as "can I send
+// this". A template being prepared after an update keeps its previous render
+// and stays sendable.
+//
+// An empty status - from an API deployment that predates the field - counts as
+// settled, because there every template with HTML was simply usable. Treating
+// it as pending would make an old API look like a stalled queue.
+func (s TemplatePreparationStatus) Settled() bool {
+	return s == PreparationReady || s == ""
+}
+
 // Template represents an email template.
 type Template struct {
-	ID        int    `json:"id"`
-	Name      string `json:"name"`
-	Slug      string `json:"slug"`
-	ProjectID int    `json:"project_id"`
-	FolderID  int    `json:"folder_id"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	ID                int                       `json:"id"`
+	Name              string                    `json:"name"`
+	Slug              string                    `json:"slug"`
+	ProjectID         int                       `json:"project_id"`
+	FolderID          int                       `json:"folder_id"`
+	Purpose           TemplatePurpose           `json:"purpose"`
+	PreparationStatus TemplatePreparationStatus `json:"preparation_status"`
+	CreatedAt         string                    `json:"created_at"`
+	UpdatedAt         string                    `json:"updated_at"`
 }
 
 // MergeTag represents a merge tag extracted from template content.
@@ -44,6 +93,20 @@ type ListTemplatesParams struct {
 	// ProjectID is the project to retrieve templates from. Uses the team's
 	// default project if not set.
 	ProjectID int
+
+	// FolderID narrows the list to one folder of that project. Discover ids
+	// with Folders.List.
+	//
+	// One PerPage=100 call reconciles a whole bulk import instead of a detail
+	// call per template, each of which drags the full HTML payload against the
+	// same rate limit.
+	//
+	// A folder that is not in the resolved project is a 404, not an empty
+	// list, so a typo cannot be misread as "nothing is there yet".
+	FolderID int
+
+	// Purpose narrows the list to one module. Both are returned if not set.
+	Purpose TemplatePurpose
 
 	// PerPage is the number of results per page (1-100, default 25).
 	PerPage int
@@ -86,8 +149,13 @@ type CreateTemplateRequest struct {
 	// ProjectID specifies which project to create the template in.
 	ProjectID *int `json:"project_id,omitempty"`
 
-	// FolderID specifies which folder within the project.
+	// FolderID specifies which folder within the project. It must belong to
+	// the same module as Purpose. Discover ids with Folders.List.
 	FolderID *int `json:"folder_id,omitempty"`
+
+	// Purpose is the module to create the template in. Leave empty to let the
+	// API decide, which today means transactional.
+	Purpose TemplatePurpose `json:"purpose,omitempty"`
 }
 
 // CreateTemplateResponse is the response from creating a template.
@@ -98,14 +166,16 @@ type CreateTemplateResponse struct {
 
 // CreateTemplateData contains the result of creating a template.
 type CreateTemplateData struct {
-	ID            int        `json:"id"`
-	Name          string     `json:"name"`
-	Slug          string     `json:"slug"`
-	ProjectID     int        `json:"project_id"`
-	FolderID      int        `json:"folder_id"`
-	ActiveVersion int        `json:"active_version"`
-	MergeTags     []MergeTag `json:"merge_tags"`
-	CreatedAt     string     `json:"created_at"`
+	ID                int                       `json:"id"`
+	Name              string                    `json:"name"`
+	Slug              string                    `json:"slug"`
+	ProjectID         int                       `json:"project_id"`
+	FolderID          int                       `json:"folder_id"`
+	Purpose           TemplatePurpose           `json:"purpose"`
+	PreparationStatus TemplatePreparationStatus `json:"preparation_status"`
+	ActiveVersion     int                       `json:"active_version"`
+	MergeTags         []MergeTag                `json:"merge_tags"`
+	CreatedAt         string                    `json:"created_at"`
 }
 
 // List retrieves a paginated list of email templates.
@@ -121,6 +191,12 @@ func (s *TemplateService) List(ctx context.Context, params *ListTemplatesParams)
 		q := url.Values{}
 		if params.ProjectID > 0 {
 			q.Set("project_id", strconv.Itoa(params.ProjectID))
+		}
+		if params.FolderID > 0 {
+			q.Set("folder_id", strconv.Itoa(params.FolderID))
+		}
+		if params.Purpose != "" {
+			q.Set("purpose", string(params.Purpose))
 		}
 		if params.PerPage > 0 {
 			q.Set("per_page", strconv.Itoa(params.PerPage))
@@ -169,17 +245,19 @@ func (s *TemplateService) Create(ctx context.Context, params *CreateTemplateRequ
 // TemplateDetail represents detailed information about a template,
 // including version info and content.
 type TemplateDetail struct {
-	ID            int    `json:"id"`
-	Name          string `json:"name"`
-	Slug          string `json:"slug"`
-	ProjectID     int    `json:"project_id"`
-	FolderID      int    `json:"folder_id"`
-	ActiveVersion *int   `json:"active_version"`
-	VersionsCount int    `json:"versions_count"`
-	Html          string `json:"html,omitempty"`
-	Json          string `json:"json,omitempty"`
-	CreatedAt     string `json:"created_at"`
-	UpdatedAt     string `json:"updated_at"`
+	ID                int                       `json:"id"`
+	Name              string                    `json:"name"`
+	Slug              string                    `json:"slug"`
+	ProjectID         int                       `json:"project_id"`
+	FolderID          int                       `json:"folder_id"`
+	Purpose           TemplatePurpose           `json:"purpose"`
+	PreparationStatus TemplatePreparationStatus `json:"preparation_status"`
+	ActiveVersion     *int                      `json:"active_version"`
+	VersionsCount     int                       `json:"versions_count"`
+	Html              string                    `json:"html,omitempty"`
+	Json              string                    `json:"json,omitempty"`
+	CreatedAt         string                    `json:"created_at"`
+	UpdatedAt         string                    `json:"updated_at"`
 }
 
 // GetTemplateParams contains optional query parameters for getting a template.
