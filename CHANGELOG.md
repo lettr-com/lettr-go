@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Scheduled emails are now Lettr's own objects rather than pass-through provider transmissions. SparkPost retired per-transmission GET and DELETE, so Lettr holds a scheduled email in its own store and hands it over only when it is due. That is what makes the rest of this entry possible: the schedule can be listed, read back the instant it is created, and cancelled - none of which the previous arrangement could do reliably. **This section contains breaking changes**, all of them in the scheduled-email types.
+
+### Added
+
+- **`client.Emails.ListScheduled()`** - the emails currently waiting to go out, filtered by `Status` and paginated with `PerPage`/`Page`. There was no way to ask this before: a caller had to remember every `request_id` it had ever scheduled, because nothing would tell it what was still pending. Pass nil params for the API's defaults (25 per page, page 1).
+- **`ScheduledEmailState`** with `ScheduledStateScheduled`, `ScheduledStateSending`, `ScheduledStateSent`, `ScheduledStateCancelled` and `ScheduledStateFailed`, plus `IsCancellable()`.
+
+  These five are Lettr's own lifecycle, authoritative from the moment of scheduling, and they replace the provider transmission states that used to leak through. `IsCancellable()` is only true for `scheduled`: past that the email is with the provider, which offers no per-message recall, so a cancel would come back a 409. It is a defined string type, so comparing `State` against a plain `"scheduled"` literal still compiles.
+- **`ScheduledEmail.Accepted`, `.Rejected`, `.Tag` and `.FailureReason`.** `Accepted` is the honest answer to "is this still going out": it is the recipient count while scheduled and **drops to 0 once cancelled**, so a cancelled email can never read back as accepted. `FailureReason` is set only in `ScheduledStateFailed` and says why the hand-off was given up on.
+
+### Changed
+
+- **Breaking: `ScheduleEmailResponse.Data` is now the full `ScheduledEmail`,** not the three-field `{RequestID, Accepted, Rejected}` that `ScheduleEmailData` held. Scheduling now answers with the object it created, so there is no read-back call just to learn the state of something you scheduled a millisecond ago. `ScheduleEmailData` is removed - nothing returns that shape any more.
+- **Breaking: `CancelScheduledResponse` gained `Data ScheduledEmail`.** It used to carry nothing but a message, which left the caller to trust it. The cancelled email now comes back with `State: ScheduledStateCancelled` and `Accepted: 0`.
+- **Breaking: `ScheduledTransmission` is renamed `ScheduledEmail`** and kept as a deprecated alias, so existing references still compile. `TransmissionID` is now `*string` and `Subject` is `*string`, both because the API genuinely returns null for them; `State` is now `ScheduledEmailState`.
+
+  **Two ids now, and they are not interchangeable.** `RequestID` (`sch_…`) is Lettr's own id and the only thing `GetScheduled` and `CancelScheduled` accept. `TransmissionID` is the provider's, **nil until the email is actually sent**, and it is the value that arrives on your **webhook events** - so it is what correlates a scheduled email with the webhooks it eventually produces. Correlating on `RequestID` will never match a webhook.
+- **Breaking: `GetEmailResponse.Data` is now `EmailDetail`,** a type of its own with exactly the fields `GET /emails/{id}` returns. It is field-for-field what `ScheduledTransmission` used to be, so code reading `client.Emails.Get(...)` results is unchanged unless it named the type explicitly - in which case swap `ScheduledTransmission` for `EmailDetail`.
+
+  The two endpoints had been sharing one struct on the assumption that a scheduled email and a sent one were the same object. They are not any more, and merging them would have put `RequestID`, `Accepted` and `FailureReason` on a sent email where they are structurally always empty. Note also that `EmailDetail.State` is derived from the events that arrived (`delivered`, `bounced`, …) and is a different vocabulary from `ScheduledEmailState`.
+
+### Fixed
+
+- **`GetScheduled` fills in `RequestID` when the API answers in the pre-rework shape.** A provider transmission id stored before Lettr owned the schedule still resolves, but it is answered from delivery events, and that shape has no `request_id` key at all - so `RequestID` would silently decode as `""` for an email the caller had just asked for by id. It now falls back to the id you passed, so `RequestID` always holds the id that addresses the email in front of you.
+- The scheduling window on `ScheduleEmailRequest.ScheduledAt` is documented as 5 minutes to **30 days**. It said 3 days, which has not been the limit since Lettr took ownership of the schedule, and a caller trusting the comment would have refused sends the API accepts.
+
 ## [1.5.0] - 2026-09-10
 
 Brings this client level with lettr-php: template modules, the folders endpoint, preparation status, and idempotent sends. Everything is additive - code written against 1.4.1 keeps compiling and sends identical requests.

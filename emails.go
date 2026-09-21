@@ -136,58 +136,58 @@ type SendEmailData struct {
 // EmailEvent represents a single event in an email's lifecycle
 // (injection, delivery, bounce, open, click, etc).
 type EmailEvent struct {
-	EventID               string                 `json:"event_id"`
-	Type                  string                 `json:"type,omitempty"`
-	Timestamp             string                 `json:"timestamp"`
-	RequestID             *string                `json:"request_id"`
-	MessageID             *string                `json:"message_id"`
-	Subject               *string                `json:"subject"`
-	FriendlyFrom          *string                `json:"friendly_from"`
-	SendingDomain         *string                `json:"sending_domain"`
-	RcptTo                *string                `json:"rcpt_to"`
-	RawRcptTo             *string                `json:"raw_rcpt_to"`
-	RecipientDomain       *string                `json:"recipient_domain"`
-	MailboxProvider       *string                `json:"mailbox_provider"`
-	MailboxProviderRegion *string                `json:"mailbox_provider_region"`
-	SendingIP             *string                `json:"sending_ip"`
-	ClickTracking         *bool                  `json:"click_tracking"`
-	OpenTracking          *bool                  `json:"open_tracking"`
-	Transactional         *bool                  `json:"transactional"`
-	MsgSize               *int                   `json:"msg_size"`
-	InjectionTime         *string                `json:"injection_time"`
-	Reason                *string                `json:"reason"`
-	RawReason             *string                `json:"raw_reason"`
-	ErrorCode             *string                `json:"error_code"`
-	BounceClass           *int                   `json:"bounce_class,omitempty"`
+	EventID               string  `json:"event_id"`
+	Type                  string  `json:"type,omitempty"`
+	Timestamp             string  `json:"timestamp"`
+	RequestID             *string `json:"request_id"`
+	MessageID             *string `json:"message_id"`
+	Subject               *string `json:"subject"`
+	FriendlyFrom          *string `json:"friendly_from"`
+	SendingDomain         *string `json:"sending_domain"`
+	RcptTo                *string `json:"rcpt_to"`
+	RawRcptTo             *string `json:"raw_rcpt_to"`
+	RecipientDomain       *string `json:"recipient_domain"`
+	MailboxProvider       *string `json:"mailbox_provider"`
+	MailboxProviderRegion *string `json:"mailbox_provider_region"`
+	SendingIP             *string `json:"sending_ip"`
+	ClickTracking         *bool   `json:"click_tracking"`
+	OpenTracking          *bool   `json:"open_tracking"`
+	Transactional         *bool   `json:"transactional"`
+	MsgSize               *int    `json:"msg_size"`
+	InjectionTime         *string `json:"injection_time"`
+	Reason                *string `json:"reason"`
+	RawReason             *string `json:"raw_reason"`
+	ErrorCode             *string `json:"error_code"`
+	BounceClass           *int    `json:"bounce_class,omitempty"`
 	// RcptMeta is polymorphic per spec: an object (in /emails list items)
 	// or an array (in event-stream payloads like /emails/events), or null.
 	// Type-assert to map[string]interface{} or []interface{} as appropriate.
-	RcptMeta              interface{}            `json:"rcpt_meta"`
-	TemplateID            *string                `json:"template_id,omitempty"`
-	TemplateVersion       *string                `json:"template_version,omitempty"`
-	DelvMethod            *string                `json:"delv_method,omitempty"`
-	RecvMethod            *string                `json:"recv_method,omitempty"`
-	RoutingDomain         *string                `json:"routing_domain,omitempty"`
-	ScheduledTime         *string                `json:"scheduled_time,omitempty"`
-	CampaignID            *string                `json:"campaign_id,omitempty"`
-	AbTestID              *string                `json:"ab_test_id,omitempty"`
-	AbTestVersion         *string                `json:"ab_test_version,omitempty"`
-	AmpEnabled            *bool                  `json:"amp_enabled,omitempty"`
-	RcptType              *string                `json:"rcpt_type,omitempty"`
-	RcptTags              []string               `json:"rcpt_tags,omitempty"`
-	IpPool                *string                `json:"ip_pool,omitempty"`
-	MsgFrom               *string                `json:"msg_from,omitempty"`
-	QueueTime             *int                   `json:"queue_time,omitempty"`
-	OutboundTls           *string                `json:"outbound_tls,omitempty"`
-	InitialPixel          *bool                  `json:"initial_pixel,omitempty"`
-	NumRetries            *int                   `json:"num_retries,omitempty"`
-	DeviceToken           *string                `json:"device_token,omitempty"`
-	TargetLinkURL         *string                `json:"target_link_url,omitempty"`
-	TargetLinkName        *string                `json:"target_link_name,omitempty"`
-	UserAgent             *string                `json:"user_agent,omitempty"`
-	UserAgentParsed       *UserAgentParsed       `json:"user_agent_parsed,omitempty"`
-	GeoIp                 *GeoIp                 `json:"geo_ip,omitempty"`
-	IpAddress             *string                `json:"ip_address,omitempty"`
+	RcptMeta        interface{}      `json:"rcpt_meta"`
+	TemplateID      *string          `json:"template_id,omitempty"`
+	TemplateVersion *string          `json:"template_version,omitempty"`
+	DelvMethod      *string          `json:"delv_method,omitempty"`
+	RecvMethod      *string          `json:"recv_method,omitempty"`
+	RoutingDomain   *string          `json:"routing_domain,omitempty"`
+	ScheduledTime   *string          `json:"scheduled_time,omitempty"`
+	CampaignID      *string          `json:"campaign_id,omitempty"`
+	AbTestID        *string          `json:"ab_test_id,omitempty"`
+	AbTestVersion   *string          `json:"ab_test_version,omitempty"`
+	AmpEnabled      *bool            `json:"amp_enabled,omitempty"`
+	RcptType        *string          `json:"rcpt_type,omitempty"`
+	RcptTags        []string         `json:"rcpt_tags,omitempty"`
+	IpPool          *string          `json:"ip_pool,omitempty"`
+	MsgFrom         *string          `json:"msg_from,omitempty"`
+	QueueTime       *int             `json:"queue_time,omitempty"`
+	OutboundTls     *string          `json:"outbound_tls,omitempty"`
+	InitialPixel    *bool            `json:"initial_pixel,omitempty"`
+	NumRetries      *int             `json:"num_retries,omitempty"`
+	DeviceToken     *string          `json:"device_token,omitempty"`
+	TargetLinkURL   *string          `json:"target_link_url,omitempty"`
+	TargetLinkName  *string          `json:"target_link_name,omitempty"`
+	UserAgent       *string          `json:"user_agent,omitempty"`
+	UserAgentParsed *UserAgentParsed `json:"user_agent_parsed,omitempty"`
+	GeoIp           *GeoIp           `json:"geo_ip,omitempty"`
+	IpAddress       *string          `json:"ip_address,omitempty"`
 }
 
 // UserAgentParsed contains parsed user agent information from open/click events.
@@ -259,11 +259,28 @@ type CursorPagination struct {
 }
 
 // GetEmailResponse is the response from getting email details.
-// The data shape matches ShowScheduledTransmissionResponse — transmission
-// metadata plus the full list of delivery events.
 type GetEmailResponse struct {
-	Message string                `json:"message"`
-	Data    ScheduledTransmission `json:"data"`
+	Message string      `json:"message"`
+	Data    EmailDetail `json:"data"`
+}
+
+// EmailDetail is an already-sent email, reconstructed from its delivery events.
+//
+// State here is derived from the events that arrived ("delivered", "bounced",
+// "failed"), which is a different vocabulary from ScheduledEmail.State: that
+// one is Lettr's own lifecycle and is known before anything is delivered.
+type EmailDetail struct {
+	// TransmissionID is the provider's id, the same value that appears on
+	// webhook events for this email.
+	TransmissionID string       `json:"transmission_id"`
+	State          string       `json:"state"`
+	ScheduledAt    *string      `json:"scheduled_at"`
+	From           string       `json:"from"`
+	FromName       *string      `json:"from_name"`
+	Subject        string       `json:"subject"`
+	Recipients     []string     `json:"recipients"`
+	NumRecipients  int          `json:"num_recipients"`
+	Events         []EmailEvent `json:"events"`
 }
 
 // Send sends an email with the given parameters.
@@ -520,48 +537,140 @@ type ScheduleEmailRequest struct {
 	SendEmailRequest
 
 	// ScheduledAt is the time to send the email (ISO 8601).
-	// Must be at least 5 minutes in the future and at most 3 days.
+	// Must be at least 5 minutes in the future and at most 30 days.
 	ScheduledAt string `json:"scheduled_at"`
 }
 
-// ScheduleEmailResponse is the response from scheduling an email.
-type ScheduleEmailResponse struct {
-	Message string            `json:"message"`
-	Data    ScheduleEmailData `json:"data"`
+// ScheduledEmailState is the lifecycle of a scheduled email.
+//
+// Lettr holds the email in its own store until it is due, so these states are
+// Lettr's and are authoritative from the moment of scheduling. The provider
+// never sees a future-dated message, which is why a cancelled email can be
+// told apart from one that never existed.
+type ScheduledEmailState string
+
+const (
+	// ScheduledStateScheduled is waiting for its delivery time. The only state
+	// CancelScheduled accepts.
+	ScheduledStateScheduled ScheduledEmailState = "scheduled"
+
+	// ScheduledStateSending is being handed to the provider right now.
+	ScheduledStateSending ScheduledEmailState = "sending"
+
+	// ScheduledStateSent has been handed over. TransmissionID is set from here
+	// on, and delivery detail comes from the events API.
+	ScheduledStateSent ScheduledEmailState = "sent"
+
+	// ScheduledStateCancelled was cancelled before hand-off, so nothing was sent.
+	ScheduledStateCancelled ScheduledEmailState = "cancelled"
+
+	// ScheduledStateFailed gave up trying to hand the email over. FailureReason
+	// says why.
+	ScheduledStateFailed ScheduledEmailState = "failed"
+)
+
+// IsCancellable reports whether CancelScheduled would still be honoured.
+//
+// Once the email is with the provider there is no per-message recall, so
+// cancelling anything past "scheduled" returns a 409 rather than stopping it.
+func (s ScheduledEmailState) IsCancellable() bool {
+	return s == ScheduledStateScheduled
 }
 
-// ScheduleEmailData contains the result of scheduling an email.
-type ScheduleEmailData struct {
-	// RequestID is the unique transmission ID for the scheduled email.
-	RequestID string `json:"request_id"`
+// ScheduledEmail is an email Lettr is holding until its delivery time.
+//
+// It carries two ids, and they are not interchangeable:
+//
+//   - RequestID ("sch_…") is Lettr's own id. It is what GetScheduled and
+//     CancelScheduled take.
+//   - TransmissionID is the provider's id, nil until the email is actually
+//     handed over. It is the value webhook events carry, so it is what
+//     correlates this email with the webhooks it produces.
+type ScheduledEmail struct {
+	RequestID      string              `json:"request_id"`
+	TransmissionID *string             `json:"transmission_id"`
+	State          ScheduledEmailState `json:"state"`
 
-	// Accepted is the number of recipients that were accepted.
+	// ScheduledAt is the delivery time (ISO 8601). It is nil only on the
+	// legacy read path described on GetScheduled.
+	ScheduledAt *string `json:"scheduled_at"`
+
+	From          string   `json:"from"`
+	FromName      *string  `json:"from_name"`
+	Subject       *string  `json:"subject"`
+	Recipients    []string `json:"recipients"`
+	NumRecipients int      `json:"num_recipients"`
+
+	// Accepted and Rejected are the provider's counts once the email has been
+	// sent, and before that describe what Lettr took on for delivery — so a
+	// cancelled email reads back as 0 accepted, not 1.
 	Accepted int `json:"accepted"`
-
-	// Rejected is the number of recipients that were rejected.
 	Rejected int `json:"rejected"`
+
+	Tag *string `json:"tag"`
+
+	// FailureReason is set only in ScheduledStateFailed.
+	FailureReason *string `json:"failure_reason"`
+
+	// Events are the delivery events, which only exist once the email has been
+	// handed over.
+	Events []EmailEvent `json:"events"`
+}
+
+// ScheduledTransmission is the former name of ScheduledEmail.
+//
+// Deprecated: renamed to ScheduledEmail. If you used it for Emails.Get rather
+// than the scheduled endpoints, that response now has its own type, EmailDetail.
+type ScheduledTransmission = ScheduledEmail
+
+// ScheduleEmailResponse is the response from scheduling an email.
+type ScheduleEmailResponse struct {
+	Message string         `json:"message"`
+	Data    ScheduledEmail `json:"data"`
 }
 
 // GetScheduledEmailResponse is the response from getting a scheduled email.
 type GetScheduledEmailResponse struct {
-	Message string                 `json:"message"`
-	Data    ScheduledTransmission  `json:"data"`
+	Message string         `json:"message"`
+	Data    ScheduledEmail `json:"data"`
 }
 
-// ScheduledTransmission represents a scheduled email transmission.
-type ScheduledTransmission struct {
-	TransmissionID string       `json:"transmission_id"`
-	State          string       `json:"state"`
-	ScheduledAt    *string      `json:"scheduled_at"`
-	From           string       `json:"from"`
-	FromName       *string      `json:"from_name"`
-	Subject        string       `json:"subject"`
-	Recipients     []string     `json:"recipients"`
-	NumRecipients  int          `json:"num_recipients"`
-	Events         []EmailEvent `json:"events"`
+// CancelScheduledResponse is the response from cancelling a scheduled email.
+type CancelScheduledResponse struct {
+	Message string         `json:"message"`
+	Data    ScheduledEmail `json:"data"`
+}
+
+// ListScheduledEmailsParams contains the query parameters for listing
+// scheduled emails.
+type ListScheduledEmailsParams struct {
+	// Status narrows the list to one state. All states are returned if not set.
+	Status ScheduledEmailState
+
+	// PerPage is the number of results per page (1-100, default 25).
+	PerPage int
+
+	// Page is the page number (default 1).
+	Page int
+}
+
+// ListScheduledEmailsResponse is the response from listing scheduled emails.
+type ListScheduledEmailsResponse struct {
+	Message string                  `json:"message"`
+	Data    ListScheduledEmailsData `json:"data"`
+}
+
+// ListScheduledEmailsData contains the paginated list of scheduled emails.
+type ListScheduledEmailsData struct {
+	ScheduledEmails []ScheduledEmail `json:"scheduled_emails"`
+	Pagination      PagePagination   `json:"pagination"`
 }
 
 // Schedule queues an email for future delivery.
+//
+// The delivery time must be at least 5 minutes and at most 30 days out.
+// The response is the scheduled email itself, so there is no need to read it
+// back to learn its state.
 //
 // Example:
 //
@@ -574,6 +683,8 @@ type ScheduledTransmission struct {
 //	    },
 //	    ScheduledAt: "2024-12-25T10:00:00Z",
 //	})
+//
+//	resp.Data.RequestID // "sch_…" — pass this to GetScheduled and CancelScheduled
 func (s *EmailService) Schedule(ctx context.Context, params *ScheduleEmailRequest) (*ScheduleEmailResponse, error) {
 	req, err := s.client.newRequest(ctx, http.MethodPost, "emails/scheduled", params)
 	if err != nil {
@@ -587,13 +698,57 @@ func (s *EmailService) Schedule(ctx context.Context, params *ScheduleEmailReques
 	return &resp, nil
 }
 
-// GetScheduled retrieves details of a scheduled email transmission.
+// ListScheduled retrieves a paginated list of scheduled emails.
+//
+// Pass nil for params to use defaults.
 //
 // Example:
 //
-//	scheduled, err := client.Emails.GetScheduled(ctx, "transmission-123")
-func (s *EmailService) GetScheduled(ctx context.Context, transmissionID string) (*GetScheduledEmailResponse, error) {
-	path := fmt.Sprintf("emails/scheduled/%s", url.PathEscape(transmissionID))
+//	resp, err := client.Emails.ListScheduled(ctx, &lettr.ListScheduledEmailsParams{
+//	    Status: lettr.ScheduledStateScheduled,
+//	})
+func (s *EmailService) ListScheduled(ctx context.Context, params *ListScheduledEmailsParams) (*ListScheduledEmailsResponse, error) {
+	path := "emails/scheduled"
+	if params != nil {
+		q := url.Values{}
+		if params.Status != "" {
+			q.Set("status", string(params.Status))
+		}
+		if params.PerPage > 0 {
+			q.Set("per_page", strconv.Itoa(params.PerPage))
+		}
+		if params.Page > 0 {
+			q.Set("page", strconv.Itoa(params.Page))
+		}
+		if encoded := q.Encode(); encoded != "" {
+			path += "?" + encoded
+		}
+	}
+
+	req, err := s.client.newRequest(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp ListScheduledEmailsResponse
+	if _, err := s.client.do(req, &resp); err != nil {
+		return nil, err
+	}
+	return &resp, nil
+}
+
+// GetScheduled retrieves a scheduled email by its RequestID.
+//
+// A provider transmission id stored before Lettr owned the schedule still
+// resolves, answered from delivery events. That older shape carries no
+// request_id, so RequestID is filled in from the id you asked about and always
+// holds the id that addresses this email.
+//
+// Example:
+//
+//	scheduled, err := client.Emails.GetScheduled(ctx, "sch_01M322YMWVCZ4RNYXHMSSMDTM1")
+func (s *EmailService) GetScheduled(ctx context.Context, id string) (*GetScheduledEmailResponse, error) {
+	path := fmt.Sprintf("emails/scheduled/%s", url.PathEscape(id))
 
 	req, err := s.client.newRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
@@ -604,21 +759,26 @@ func (s *EmailService) GetScheduled(ctx context.Context, transmissionID string) 
 	if _, err := s.client.do(req, &resp); err != nil {
 		return nil, err
 	}
+
+	if resp.Data.RequestID == "" {
+		resp.Data.RequestID = id
+	}
 	return &resp, nil
 }
 
-// CancelScheduledResponse is the response from cancelling a scheduled email.
-type CancelScheduledResponse struct {
-	Message string `json:"message"`
-}
-
-// CancelScheduled cancels a pending scheduled email transmission.
+// CancelScheduled cancels a scheduled email before it is sent, and returns it
+// in its cancelled state.
+//
+// Only an email still in ScheduledStateScheduled can be cancelled; past that
+// it is with the provider, which offers no per-message recall, and the call
+// fails with a 409.
 //
 // Example:
 //
-//	resp, err := client.Emails.CancelScheduled(ctx, "transmission-123")
-func (s *EmailService) CancelScheduled(ctx context.Context, transmissionID string) (*CancelScheduledResponse, error) {
-	path := fmt.Sprintf("emails/scheduled/%s", url.PathEscape(transmissionID))
+//	resp, err := client.Emails.CancelScheduled(ctx, "sch_01M322YMWVCZ4RNYXHMSSMDTM1")
+//	resp.Data.State // lettr.ScheduledStateCancelled
+func (s *EmailService) CancelScheduled(ctx context.Context, id string) (*CancelScheduledResponse, error) {
+	path := fmt.Sprintf("emails/scheduled/%s", url.PathEscape(id))
 
 	req, err := s.client.newRequest(ctx, http.MethodDelete, path, nil)
 	if err != nil {
