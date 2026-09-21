@@ -1311,3 +1311,40 @@ func TestWebhookNullEventTypes(t *testing.T) {
 		t.Errorf("expected %d event types, got %d", len(events), len(*wh2.EventTypes))
 	}
 }
+
+func TestGetScheduledLegacyProviderState(t *testing.T) {
+	// The legacy read path answers from delivery events, in the provider's own
+	// vocabulary - a delivered email comes back "delivered", which is none of
+	// the five states Lettr owns.
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"message":"ok","data":{
+			"transmission_id": "7685727204621206387",
+			"state": "delivered",
+			"scheduled_at": null,
+			"from": "sender@example.com",
+			"from_name": null,
+			"subject": "Legacy",
+			"recipients": ["r@example.com"],
+			"num_recipients": 1,
+			"events": []
+		}}`))
+	})
+	defer server.Close()
+
+	resp, err := client.Emails.GetScheduled(context.Background(), "7685727204621206387")
+	if err != nil {
+		t.Fatalf("GetScheduled: %v", err)
+	}
+
+	if resp.Data.State != ScheduledStateDelivered {
+		t.Errorf("State = %q, want %q", resp.Data.State, ScheduledStateDelivered)
+	}
+	// No sch_ id in this shape, so it falls back to the id used to ask.
+	if resp.Data.RequestID != "7685727204621206387" {
+		t.Errorf("RequestID = %q, want the id passed in", resp.Data.RequestID)
+	}
+	if resp.Data.State.IsCancellable() {
+		t.Error("a delivered email must not report as cancellable")
+	}
+}

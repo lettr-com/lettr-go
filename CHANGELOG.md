@@ -11,6 +11,14 @@ Scheduled emails are now Lettr's own objects rather than pass-through provider t
 
 ### Added
 
+- **Legacy provider states as named constants** — `ScheduledStateSubmitted`,
+  `ScheduledStateGenerating`, `ScheduledStateDelivered`, `ScheduledStateBounced`,
+  all deprecated. `GetScheduled` reports them only on the legacy read path,
+  which answers from delivery events in the provider's vocabulary rather than
+  Lettr's. Go's string-typed state decoded them fine already; this just means
+  you can name what you are comparing against. The equivalent gap threw or
+  returned null in two of the other SDKs.
+
 - **`client.Emails.ListScheduled()`** - the emails currently waiting to go out, filtered by `Status` and paginated with `PerPage`/`Page`. There was no way to ask this before: a caller had to remember every `request_id` it had ever scheduled, because nothing would tell it what was still pending. Pass nil params for the API's defaults (25 per page, page 1).
 - **`ScheduledEmailState`** with `ScheduledStateScheduled`, `ScheduledStateSending`, `ScheduledStateSent`, `ScheduledStateCancelled` and `ScheduledStateFailed`, plus `IsCancellable()`.
 

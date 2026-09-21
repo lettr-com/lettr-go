@@ -567,6 +567,19 @@ const (
 	// ScheduledStateFailed gave up trying to hand the email over. FailureReason
 	// says why.
 	ScheduledStateFailed ScheduledEmailState = "failed"
+
+	// The states below are the provider's, not Lettr's. GetScheduled reports
+	// them only on the legacy read path, which answers from delivery events in
+	// the provider's own vocabulary - never for a sch_ id.
+	//
+	// Deprecated: legacy provider state, from a numeric transmission id.
+	ScheduledStateSubmitted ScheduledEmailState = "submitted"
+	// Deprecated: legacy provider state, from a numeric transmission id.
+	ScheduledStateGenerating ScheduledEmailState = "generating"
+	// Deprecated: legacy provider state, from a numeric transmission id.
+	ScheduledStateDelivered ScheduledEmailState = "delivered"
+	// Deprecated: legacy provider state, from a numeric transmission id.
+	ScheduledStateBounced ScheduledEmailState = "bounced"
 )
 
 // IsCancellable reports whether CancelScheduled would still be honoured.
