@@ -200,7 +200,7 @@ func TestGetEmail(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(GetEmailResponse{
 			Message: "Email retrieved successfully.",
-			Data: ScheduledTransmission{
+			Data: EmailDetail{
 				TransmissionID: "req-123",
 				State:          "delivered",
 				From:           "sender@example.com",
@@ -546,6 +546,26 @@ func TestListEmailEvents(t *testing.T) {
 	}
 }
 
+// scheduledEmailJSON is the wire shape of a scheduled email, written out by
+// hand rather than encoded from the struct so these tests would catch a
+// renamed or dropped JSON tag.
+const scheduledEmailJSON = `{
+	"request_id": "sch_01M322YMWVCZ4RNYXHMSSMDTM1",
+	"transmission_id": null,
+	"state": "scheduled",
+	"scheduled_at": "2026-09-21T15:37:10Z",
+	"from": "hello@dev.uselettr.com",
+	"from_name": null,
+	"subject": "sdk audit probe",
+	"recipients": ["vojta@ecomail.cz"],
+	"num_recipients": 1,
+	"accepted": 1,
+	"rejected": 0,
+	"tag": null,
+	"failure_reason": null,
+	"events": []
+}`
+
 func TestScheduleEmail(t *testing.T) {
 	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/emails/scheduled" {
@@ -557,16 +577,13 @@ func TestScheduleEmail(t *testing.T) {
 
 		var body map[string]interface{}
 		json.NewDecoder(r.Body).Decode(&body)
-		if body["scheduled_at"] != "2024-12-25T10:00:00Z" {
+		if body["scheduled_at"] != "2026-12-25T10:00:00Z" {
 			t.Errorf("unexpected scheduled_at: %v", body["scheduled_at"])
 		}
 
-		w.WriteHeader(http.StatusCreated)
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(ScheduleEmailResponse{
-			Message: "Email scheduled.",
-			Data:    ScheduleEmailData{RequestID: "tx-123", Accepted: 1, Rejected: 0},
-		})
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(`{"message":"Email scheduled for delivery.","data":` + scheduledEmailJSON + `}`))
 	})
 	defer server.Close()
 
@@ -577,22 +594,28 @@ func TestScheduleEmail(t *testing.T) {
 			Subject: "Scheduled",
 			Html:    "<h1>Hello!</h1>",
 		},
-		ScheduledAt: "2024-12-25T10:00:00Z",
+		ScheduledAt: "2026-12-25T10:00:00Z",
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Data.RequestID != "tx-123" {
-		t.Errorf("expected request ID %q, got %q", "tx-123", resp.Data.RequestID)
+	if resp.Data.RequestID != "sch_01M322YMWVCZ4RNYXHMSSMDTM1" {
+		t.Errorf("expected request ID %q, got %q", "sch_01M322YMWVCZ4RNYXHMSSMDTM1", resp.Data.RequestID)
+	}
+	if resp.Data.State != ScheduledStateScheduled {
+		t.Errorf("expected state %q, got %q", ScheduledStateScheduled, resp.Data.State)
 	}
 	if resp.Data.Accepted != 1 {
 		t.Errorf("expected 1 accepted, got %d", resp.Data.Accepted)
+	}
+	if resp.Data.Subject == nil || *resp.Data.Subject != "sdk audit probe" {
+		t.Errorf("expected subject %q, got %v", "sdk audit probe", resp.Data.Subject)
 	}
 }
 
 func TestGetScheduledEmail(t *testing.T) {
 	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/emails/scheduled/tx-123" {
+		if r.URL.Path != "/emails/scheduled/sch_01M322YMWVCZ4RNYXHMSSMDTM1" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		if r.Method != http.MethodGet {
@@ -600,37 +623,150 @@ func TestGetScheduledEmail(t *testing.T) {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		scheduledAt := "2024-12-25T10:00:00Z"
-		json.NewEncoder(w).Encode(GetScheduledEmailResponse{
-			Message: "Scheduled email retrieved.",
-			Data: ScheduledTransmission{
-				TransmissionID: "tx-123",
-				State:          "scheduled",
-				ScheduledAt:    &scheduledAt,
-				From:           "sender@example.com",
-				Subject:        "Hello",
-				Recipients:     []string{"recipient@example.com"},
-				NumRecipients:  1,
-			},
-		})
+		w.Write([]byte(`{"message":"Scheduled transmission retrieved successfully.","data":` + scheduledEmailJSON + `}`))
 	})
 	defer server.Close()
 
-	resp, err := client.Emails.GetScheduled(context.Background(), "tx-123")
+	resp, err := client.Emails.GetScheduled(context.Background(), "sch_01M322YMWVCZ4RNYXHMSSMDTM1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Data.State != "scheduled" {
-		t.Errorf("expected state %q, got %q", "scheduled", resp.Data.State)
+	if resp.Data.State != ScheduledStateScheduled {
+		t.Errorf("expected state %q, got %q", ScheduledStateScheduled, resp.Data.State)
 	}
 	if resp.Data.NumRecipients != 1 {
 		t.Errorf("expected num_recipients 1, got %d", resp.Data.NumRecipients)
+	}
+	// Nothing has been handed to the provider yet, so there is no id to
+	// correlate webhooks with.
+	if resp.Data.TransmissionID != nil {
+		t.Errorf("expected nil transmission id while scheduled, got %q", *resp.Data.TransmissionID)
+	}
+	if resp.Data.ScheduledAt == nil || *resp.Data.ScheduledAt != "2026-09-21T15:37:10Z" {
+		t.Errorf("expected scheduled_at to decode, got %v", resp.Data.ScheduledAt)
+	}
+	if resp.Data.Tag != nil || resp.Data.FailureReason != nil || resp.Data.FromName != nil {
+		t.Errorf("expected the null fields to decode as nil, got %+v", resp.Data)
+	}
+}
+
+// Once the email is sent the provider's id appears, and that - not the
+// request id - is what webhook events carry.
+func TestGetScheduledEmailSentCarriesTransmissionID(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"message":"Scheduled transmission retrieved successfully.","data":{
+			"request_id": "sch_01M322YMWVCZ4RNYXHMSSMDTM1",
+			"transmission_id": "112233445566778899",
+			"state": "sent",
+			"scheduled_at": "2026-09-21T15:37:10Z",
+			"from": "hello@dev.uselettr.com",
+			"from_name": null,
+			"subject": "sdk audit probe",
+			"recipients": ["vojta@ecomail.cz"],
+			"num_recipients": 1,
+			"accepted": 1,
+			"rejected": 0,
+			"tag": "welcome",
+			"failure_reason": null,
+			"events": [{"event_id":"evt-1","type":"delivery"}]
+		}}`))
+	})
+	defer server.Close()
+
+	resp, err := client.Emails.GetScheduled(context.Background(), "sch_01M322YMWVCZ4RNYXHMSSMDTM1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Data.TransmissionID == nil || *resp.Data.TransmissionID != "112233445566778899" {
+		t.Errorf("expected the provider id to decode, got %v", resp.Data.TransmissionID)
+	}
+	if resp.Data.State != ScheduledStateSent {
+		t.Errorf("expected state %q, got %q", ScheduledStateSent, resp.Data.State)
+	}
+	if resp.Data.Tag == nil || *resp.Data.Tag != "welcome" {
+		t.Errorf("expected tag %q, got %v", "welcome", resp.Data.Tag)
+	}
+	if len(resp.Data.Events) != 1 || resp.Data.Events[0].Type != "delivery" {
+		t.Errorf("expected 1 delivery event, got %+v", resp.Data.Events)
+	}
+}
+
+// An id issued before Lettr owned the schedule is answered from delivery
+// events, in a shape that has no request_id at all. Without the fallback the
+// caller would get an empty RequestID back for an email they just asked about
+// by id.
+func TestGetScheduledEmailLegacyShapeFillsRequestID(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/emails/scheduled/112233445566778899" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"message":"Scheduled transmission retrieved successfully.","data":{
+			"transmission_id": "112233445566778899",
+			"state": "delivered",
+			"scheduled_at": null,
+			"from": "hello@dev.uselettr.com",
+			"from_name": null,
+			"subject": "legacy probe",
+			"recipients": ["vojta@ecomail.cz"],
+			"num_recipients": 1,
+			"events": [{"event_id":"evt-1","type":"delivery"}]
+		}}`))
+	})
+	defer server.Close()
+
+	resp, err := client.Emails.GetScheduled(context.Background(), "112233445566778899")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Data.RequestID != "112233445566778899" {
+		t.Errorf("expected RequestID to fall back to the id asked for, got %q", resp.Data.RequestID)
+	}
+	if resp.Data.TransmissionID == nil || *resp.Data.TransmissionID != "112233445566778899" {
+		t.Errorf("expected the provider id to decode, got %v", resp.Data.TransmissionID)
+	}
+	if resp.Data.ScheduledAt != nil {
+		t.Errorf("expected nil scheduled_at on the legacy shape, got %q", *resp.Data.ScheduledAt)
+	}
+	// The legacy shape carries no counts, so these must stay zero rather than
+	// being reported as a rejection.
+	if resp.Data.Accepted != 0 || resp.Data.Rejected != 0 {
+		t.Errorf("expected zero counts on the legacy shape, got %d/%d", resp.Data.Accepted, resp.Data.Rejected)
+	}
+}
+
+func TestScheduledEmailStates(t *testing.T) {
+	states := map[string]ScheduledEmailState{
+		"scheduled": ScheduledStateScheduled,
+		"sending":   ScheduledStateSending,
+		"sent":      ScheduledStateSent,
+		"cancelled": ScheduledStateCancelled,
+		"failed":    ScheduledStateFailed,
+	}
+
+	for raw, want := range states {
+		var email ScheduledEmail
+		if err := json.Unmarshal([]byte(`{"state":"`+raw+`"}`), &email); err != nil {
+			t.Fatalf("unexpected error decoding %q: %v", raw, err)
+		}
+		if email.State != want {
+			t.Errorf("expected state %q, got %q", want, email.State)
+		}
+		// The type is a defined string, so a caller comparing against a plain
+		// literal keeps compiling.
+		if email.State != ScheduledEmailState(raw) || string(email.State) != raw {
+			t.Errorf("state %q did not round-trip", raw)
+		}
+		if got := email.State.IsCancellable(); got != (raw == "scheduled") {
+			t.Errorf("state %q reported IsCancellable() = %v", raw, got)
+		}
 	}
 }
 
 func TestCancelScheduledEmail(t *testing.T) {
 	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/emails/scheduled/tx-123" {
+		if r.URL.Path != "/emails/scheduled/sch_01M322YMWVCZ4RNYXHMSSMDTM1" {
 			t.Errorf("unexpected path: %s", r.URL.Path)
 		}
 		if r.Method != http.MethodDelete {
@@ -638,16 +774,108 @@ func TestCancelScheduledEmail(t *testing.T) {
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"message":"Scheduled email cancelled."}`))
+		w.Write([]byte(`{"message":"Scheduled transmission cancelled successfully.","data":{
+			"request_id": "sch_01M322YMWVCZ4RNYXHMSSMDTM1",
+			"transmission_id": null,
+			"state": "cancelled",
+			"scheduled_at": "2026-09-21T15:37:10Z",
+			"from": "hello@dev.uselettr.com",
+			"from_name": null,
+			"subject": "sdk audit probe",
+			"recipients": ["vojta@ecomail.cz"],
+			"num_recipients": 1,
+			"accepted": 0,
+			"rejected": 0,
+			"tag": null,
+			"failure_reason": null,
+			"events": []
+		}}`))
 	})
 	defer server.Close()
 
-	resp, err := client.Emails.CancelScheduled(context.Background(), "tx-123")
+	resp, err := client.Emails.CancelScheduled(context.Background(), "sch_01M322YMWVCZ4RNYXHMSSMDTM1")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if resp.Message != "Scheduled email cancelled." {
-		t.Errorf("expected message %q, got %q", "Scheduled email cancelled.", resp.Message)
+	if resp.Message != "Scheduled transmission cancelled successfully." {
+		t.Errorf("unexpected message %q", resp.Message)
+	}
+	if resp.Data.State != ScheduledStateCancelled {
+		t.Errorf("expected state %q, got %q", ScheduledStateCancelled, resp.Data.State)
+	}
+	// Nothing was handed over, so the email must not read back as accepted.
+	if resp.Data.Accepted != 0 {
+		t.Errorf("expected 0 accepted after cancelling, got %d", resp.Data.Accepted)
+	}
+	if resp.Data.State.IsCancellable() {
+		t.Error("a cancelled email should not report itself as cancellable")
+	}
+}
+
+func TestListScheduledEmails(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/emails/scheduled" {
+			t.Errorf("unexpected path: %s", r.URL.Path)
+		}
+		if r.Method != http.MethodGet {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		q := r.URL.Query()
+		if q.Get("status") != "scheduled" {
+			t.Errorf("expected status %q, got %q", "scheduled", q.Get("status"))
+		}
+		if q.Get("per_page") != "2" {
+			t.Errorf("expected per_page %q, got %q", "2", q.Get("per_page"))
+		}
+		if q.Get("page") != "1" {
+			t.Errorf("expected page %q, got %q", "1", q.Get("page"))
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"message":"Scheduled emails retrieved successfully.","data":{
+			"scheduled_emails": [` + scheduledEmailJSON + `],
+			"pagination": {"total":2,"per_page":2,"current_page":1,"last_page":1}
+		}}`))
+	})
+	defer server.Close()
+
+	resp, err := client.Emails.ListScheduled(context.Background(), &ListScheduledEmailsParams{
+		Status:  ScheduledStateScheduled,
+		PerPage: 2,
+		Page:    1,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(resp.Data.ScheduledEmails) != 1 {
+		t.Fatalf("expected 1 scheduled email, got %d", len(resp.Data.ScheduledEmails))
+	}
+	if resp.Data.ScheduledEmails[0].RequestID != "sch_01M322YMWVCZ4RNYXHMSSMDTM1" {
+		t.Errorf("unexpected request id %q", resp.Data.ScheduledEmails[0].RequestID)
+	}
+	if resp.Data.Pagination.Total != 2 || resp.Data.Pagination.LastPage != 1 {
+		t.Errorf("unexpected pagination %+v", resp.Data.Pagination)
+	}
+}
+
+// Nil params must send a bare path, so the API applies its own defaults
+// instead of the SDK pinning page 1 of 0 results.
+func TestListScheduledEmailsNilParams(t *testing.T) {
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.RawQuery != "" {
+			t.Errorf("expected no query string, got %q", r.URL.RawQuery)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"message":"Scheduled emails retrieved successfully.","data":{"scheduled_emails":[],"pagination":{"total":0,"per_page":25,"current_page":1,"last_page":1}}}`))
+	})
+	defer server.Close()
+
+	resp, err := client.Emails.ListScheduled(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.Data.Pagination.PerPage != 25 {
+		t.Errorf("expected the API default per_page 25, got %d", resp.Data.Pagination.PerPage)
 	}
 }
 
@@ -1081,5 +1309,42 @@ func TestWebhookNullEventTypes(t *testing.T) {
 	}
 	if len(*wh2.EventTypes) != len(events) {
 		t.Errorf("expected %d event types, got %d", len(events), len(*wh2.EventTypes))
+	}
+}
+
+func TestGetScheduledLegacyProviderState(t *testing.T) {
+	// The legacy read path answers from delivery events, in the provider's own
+	// vocabulary - a delivered email comes back "delivered", which is none of
+	// the five states Lettr owns.
+	client, server := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"message":"ok","data":{
+			"transmission_id": "7685727204621206387",
+			"state": "delivered",
+			"scheduled_at": null,
+			"from": "sender@example.com",
+			"from_name": null,
+			"subject": "Legacy",
+			"recipients": ["r@example.com"],
+			"num_recipients": 1,
+			"events": []
+		}}`))
+	})
+	defer server.Close()
+
+	resp, err := client.Emails.GetScheduled(context.Background(), "7685727204621206387")
+	if err != nil {
+		t.Fatalf("GetScheduled: %v", err)
+	}
+
+	if resp.Data.State != ScheduledStateDelivered {
+		t.Errorf("State = %q, want %q", resp.Data.State, ScheduledStateDelivered)
+	}
+	// No sch_ id in this shape, so it falls back to the id used to ask.
+	if resp.Data.RequestID != "7685727204621206387" {
+		t.Errorf("RequestID = %q, want the id passed in", resp.Data.RequestID)
+	}
+	if resp.Data.State.IsCancellable() {
+		t.Error("a delivered email must not report as cancellable")
 	}
 }
