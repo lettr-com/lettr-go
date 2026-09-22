@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-09-22
+
 Scheduled emails are now Lettr's own objects rather than pass-through provider transmissions. SparkPost retired per-transmission GET and DELETE, so Lettr holds a scheduled email in its own store and hands it over only when it is due. That is what makes the rest of this entry possible: the schedule can be listed, read back the instant it is created, and cancelled - none of which the previous arrangement could do reliably. **This section contains breaking changes**, all of them in the scheduled-email types.
 
 ### Added
