@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-05
+
 ### Added
 
 - **`IsRateLimited(err)` and `IsQuotaExceeded(err)`** - predicates for the 429 family, matching `IsNotFound` and friends. Before this a caller had to type-assert `*lettr.Error` and switch on `ErrorCode` themselves. The two are split on purpose because they need opposite handling: `IsRateLimited` (`rate_limit_exceeded`, or a 429 with no code) is transient, so wait `Error.RetryAfter` seconds and retry. `IsQuotaExceeded` (monthly `quota_exceeded`, `daily_quota_exceeded` or `hourly_quota_exceeded`) will keep failing until the quota window resets, so a retry loop gets nowhere. A 429 with a code the SDK does not know matches neither, so it is never mistaken for something safe to retry.
