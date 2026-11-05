@@ -194,12 +194,16 @@ const ErrorCodeHourlyQuotaExceeded = "hourly_quota_exceeded"
 // IsRateLimited reports whether err is the 429 for sending requests too fast.
 //
 // This one is retryable: wait Error.RetryAfter seconds and send the same
-// request again.
+// request again. The Lettr API always sends Retry-After with this code, but a
+// 429 from a proxy in between may not, and RetryAfter is 0 whenever the header
+// is missing or not a whole number of seconds - back off on your own then
+// rather than retrying immediately.
 //
 //	_, err := client.Emails.Send(ctx, params)
 //	switch {
 //	case lettr.IsRateLimited(err):
-//		// Transient: back off for err.(*lettr.Error).RetryAfter seconds, then retry.
+//		// Transient: back off for err.(*lettr.Error).RetryAfter seconds
+//		// (your own delay if that is 0), then retry.
 //	case lettr.IsQuotaExceeded(err):
 //		// Plan limit: retrying cannot succeed until the quota window resets.
 //	}
@@ -226,7 +230,9 @@ func IsRateLimited(err error) bool {
 // constants to tell the windows apart.
 //
 // Do not retry this on a short backoff. The same request will keep failing
-// until the quota window resets or the plan is upgraded.
+// until the quota window resets (next hour, next day or next month, by code)
+// or the plan is upgraded. These responses carry no Retry-After, so
+// Error.RetryAfter is 0 here; it does not mean "retry now".
 func IsQuotaExceeded(err error) bool {
 	e, ok := err.(*Error)
 	if !ok || e.StatusCode != http.StatusTooManyRequests {

@@ -59,6 +59,12 @@ if err != nil {
 		fmt.Println("Invalid API key")
 	case lettr.IsNotFound(err):
 		fmt.Println("Resource not found")
+	case lettr.IsRateLimited(err):
+		// Transient: wait and retry the same request.
+		fmt.Printf("Rate limited, retry in %ds\n", err.(*lettr.Error).RetryAfter)
+	case lettr.IsQuotaExceeded(err):
+		// Plan limit: retrying will not help until the quota window resets.
+		fmt.Println("Sending quota used up")
 	default:
 		fmt.Printf("Error: %v\n", err)
 	}

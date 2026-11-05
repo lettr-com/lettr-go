@@ -139,3 +139,16 @@ func TestTooManyRequestsIsNotOtherErrors(t *testing.T) {
 		t.Errorf("a 429 must not match another predicate, got %v", err)
 	}
 }
+
+// A 429 from something in front of the API may lack Retry-After. It is still a
+// rate limit, and RetryAfter is 0 - the doc tells callers to back off themselves.
+func TestRateLimitWithoutRetryAfter(t *testing.T) {
+	err := sendAgainst(t, tooManyRequests(ErrorCodeRateLimitExceeded, ""))
+
+	if !IsRateLimited(err) {
+		t.Fatalf("expected a rate limit, got %v", err)
+	}
+	if got := err.(*Error).RetryAfter; got != 0 {
+		t.Errorf("expected RetryAfter 0 without the header, got %d", got)
+	}
+}
