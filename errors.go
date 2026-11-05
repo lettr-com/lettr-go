@@ -175,6 +175,76 @@ func IsContactAlreadyExists(err error) bool {
 	return e.ErrorCode == "" || e.ErrorCode == ErrorCodeResourceAlreadyExists
 }
 
+// ErrorCodeRateLimitExceeded is sent with a 429 when requests arrive faster
+// than the API allows. It is transient: wait Error.RetryAfter seconds and retry.
+const ErrorCodeRateLimitExceeded = "rate_limit_exceeded"
+
+// ErrorCodeQuotaExceeded is sent with a 429 when the team's monthly sending
+// quota is used up. It lasts until the plan is upgraded or the month resets.
+const ErrorCodeQuotaExceeded = "quota_exceeded"
+
+// ErrorCodeDailyQuotaExceeded is sent with a 429 when the team's daily sending
+// quota is used up. It lasts until the next day.
+const ErrorCodeDailyQuotaExceeded = "daily_quota_exceeded"
+
+// ErrorCodeHourlyQuotaExceeded is sent with a 429 when the team's hourly
+// sending quota is used up. It lasts until the next hour.
+const ErrorCodeHourlyQuotaExceeded = "hourly_quota_exceeded"
+
+// IsRateLimited reports whether err is the 429 for sending requests too fast.
+//
+// This one is retryable: wait Error.RetryAfter seconds and send the same
+// request again. The Lettr API always sends Retry-After with this code, but a
+// 429 from a proxy in between may not, and RetryAfter is 0 whenever the header
+// is missing or not a whole number of seconds - back off on your own then
+// rather than retrying immediately.
+//
+//	_, err := client.Emails.Send(ctx, params)
+//	switch {
+//	case lettr.IsRateLimited(err):
+//		// Transient: back off for err.(*lettr.Error).RetryAfter seconds
+//		// (your own delay if that is 0), then retry.
+//	case lettr.IsQuotaExceeded(err):
+//		// Plan limit: retrying cannot succeed until the quota window resets.
+//	}
+//
+// It is deliberately false for the quota 429s (see IsQuotaExceeded), which
+// share the status code but not the handling - a retry loop that treats every
+// 429 as a rate limit would hammer the API until the quota window resets.
+//
+// A 429 that carries no error code also counts, so the check still works
+// against a response that predates error codes. A 429 with an error code the
+// SDK does not know is neither rate-limited nor quota-exceeded: inspect
+// Error.ErrorCode yourself rather than guess whether it is safe to retry.
+func IsRateLimited(err error) bool {
+	e, ok := err.(*Error)
+	if !ok || e.StatusCode != http.StatusTooManyRequests {
+		return false
+	}
+	return e.ErrorCode == "" || e.ErrorCode == ErrorCodeRateLimitExceeded
+}
+
+// IsQuotaExceeded reports whether err is a 429 for a used-up sending quota:
+// monthly (ErrorCodeQuotaExceeded), daily (ErrorCodeDailyQuotaExceeded) or
+// hourly (ErrorCodeHourlyQuotaExceeded). Compare Error.ErrorCode against those
+// constants to tell the windows apart.
+//
+// Do not retry this on a short backoff. The same request will keep failing
+// until the quota window resets (next hour, next day or next month, by code)
+// or the plan is upgraded. These responses carry no Retry-After, so
+// Error.RetryAfter is 0 here; it does not mean "retry now".
+func IsQuotaExceeded(err error) bool {
+	e, ok := err.(*Error)
+	if !ok || e.StatusCode != http.StatusTooManyRequests {
+		return false
+	}
+	switch e.ErrorCode {
+	case ErrorCodeQuotaExceeded, ErrorCodeDailyQuotaExceeded, ErrorCodeHourlyQuotaExceeded:
+		return true
+	}
+	return false
+}
+
 // parseError reads the response body and constructs an *Error.
 func parseError(resp *http.Response) error {
 	apiErr := &Error{
